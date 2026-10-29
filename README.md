@@ -10,6 +10,8 @@ Skill 本身不跟市民對話，也不hey替市民選定行程。
 
 規格寫在 [docs/TASKS.md](docs/TASKS.md)。第一階段（港鐵）已實作。後面的交通系統尚未定階段。
 
+代理說明在 [SKILL.md](SKILL.md)。`$SKILL_DIR` 是技能安裝目錄。回答時執行 `bash ${SKILL_DIR}/mtr.sh`。沒有參數會列出每個命令一行，`help <command>` 是該命令的說明。命令會繼續增加，功能表以 `mtr.sh` 為準。
+
 工具分兩層：
 
 - `hk_transport.mtr_core` 每個函式對應一份港鐵數據。每月 CSV 下載後放在技能目錄的 `.cache/`，30 日內重用。這個目錄已寫入 `.gitignore`。三個實時 API 在查詢當下才呼叫，不進快取。
@@ -17,6 +19,8 @@ Skill 本身不跟市民對話，也不hey替市民選定行程。
 - `mtr_exits` 交還重鐵站出入口座標。快照在 `src/hk_transport/data/mtr_exits.json`，約一年內重用，查詢時不重新下載。東距、北距是香港 1980 方格網；緯度、經度由地政總署坐標轉換寫入同一份快照。它不挑選最近的車站。
 - `special_traffic_news` 交還運輸署現時的特別交通消息。`special_traffic_arrangements` 交還預先公布的特別交通及運輸安排。兩份都是全港消息，查詢時才下載，不按港鐵篩選。港鐵某一線的警報仍看 `mtr_next_train`；有警報時，它的 note 會提示再查 `special_traffic_news`。
 - `hk_transport` 的函式回答下面 10 條問題，另外 `mtr_ride_estimate` 估算車上分鐘。它們只呼叫核心層，自己不下載。
+
+程式庫也可以直接呼叫：
 
 ```python
 from hk_transport import mtr_journey, mtr_fare, mtr_next_train
