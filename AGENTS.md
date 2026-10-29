@@ -1,6 +1,6 @@
 # AGENTS.md
 
-這個倉庫是一個 AI skill。第一階段的港鐵工具已實作。代理指示在 [SKILL.md](SKILL.md)。回答市民時用 `mtr.sh`，`$SKILL_DIR` 是安裝目錄：`bash ${SKILL_DIR}/mtr.sh` 列出命令，`bash ${SKILL_DIR}/mtr.sh help <command>` 看該命令。新的公開函式要在 `mtr.sh` 加子命令。開工前先讀 [docs/TASKS.md](docs/TASKS.md)。那份文件是第一階段的範圍。
+這個倉庫是港交寶（`hk-transport`），一個 AI skill。第一階段的港鐵工具已實作。代理指示在 [SKILL.md](SKILL.md)。回答市民時用 `mtr.sh`，`$SKILL_DIR` 是安裝目錄：`bash ${SKILL_DIR}/mtr.sh` 列出命令，`bash ${SKILL_DIR}/mtr.sh help <command>` 看該命令。新的公開函式要在 `mtr.sh` 加子命令。開工前先讀 [docs/TASKS.md](docs/TASKS.md)。那份文件是第一階段的範圍。
 
 程式分兩層。`src/hk_transport/mtr_core.py` 一個函式包一份港鐵數據。`src/hk_transport/als.py` 的 `address_lookup` 包地政總署地址查詢，是位置問題的核心，不快取。`src/hk_transport/exits.py` 的 `mtr_exits` 讀重鐵出入口座標，那是約一年有效的快照，查詢時不重新下載。`src/hk_transport/notices.py` 包運輸署特別交通消息和特別交通及運輸安排，全港交通都在內，不快取，也不按港鐵篩選。`src/hk_transport/mtr.py` 用這些函式回答市民的問題，裡面沒有 URL，也沒有快取。新的問題組合現有核心函式。新的數據源才加一個核心函式。
 
@@ -41,6 +41,6 @@ uv run pytest -m live -o addopts=
 
 ## 寫程式時
 
-實作開始後，一個函式做一件事，相關函式放在同一個港鐵模組。函式自己帶齊 import，回傳 JSON，不 `print`。 docstring 寫明它提供什麼、資料集編號、端點、用法、對應的市民問法、以及上面這些 quirk。
+實作開始後，一個函式做一件事，相關函式放在同一個港鐵模組。函式自己帶齊 import，回傳 JSON，不 `print`。docstring 寫明它提供什麼、資料集編號、端點、用法、對應的市民問法、以及上面這些 quirk。
 
 先對活的端點取一次樣，再按觀察到的欄位寫。文件裡的欄位名稱以 2026-10-29 的核對為準；端點改了就改文件，不在程式裡猜一組舊欄位。

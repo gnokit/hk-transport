@@ -8,7 +8,7 @@ description: >
 compatibility: Requires uv and Python >=3.13. $SKILL_DIR is the directory that contains mtr.sh.
 ---
 
-# hk-transport
+# hk-transport（港交寶）
 
 Answer a Hong Kong MTR question by running `mtr.sh`. Do not write a fetcher. Do not invent a figure the tool did not return.
 
