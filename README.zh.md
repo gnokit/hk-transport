@@ -4,7 +4,11 @@
 ![uv](https://img.shields.io/badge/managed%20by-uv-261230)
 ![data](https://img.shields.io/badge/data-data.gov.hk-0b7285)
 ![MIT](https://img.shields.io/badge/licence-MIT-green)
-![tests](https://github.com/gnokit/hk-transport/actions/workflows/tests.yml/badge.svg)
+[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088FF?logo=githubactions&logoColor=white)](https://github.com/gnokit/hk-transport/actions/workflows/tests.yml)
+<!-- Private repo: GitHub serves Actions badges anonymously only for public
+     repos, so the live badge 404s. When this goes public, replace the line
+     above with:
+     ![tests](https://github.com/gnokit/hk-transport/actions/workflows/tests.yml/badge.svg?branch=main) -->
 
 **一套回答香港港鐵問題的 AI skill——工具交俾代理，唔係俾聊天窗。**
 
