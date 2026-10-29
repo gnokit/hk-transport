@@ -54,6 +54,7 @@ class Arg:
     metavar: str | None = None
     nargs: str | None = None
     kind: type | None = None
+    required: bool = False
 
     @property
     def label(self) -> str:
@@ -67,7 +68,7 @@ class Arg:
     @property
     def synopsis_piece(self) -> str:
         if self.flag:
-            return f"[{self.label}]"
+            return self.label if self.required else f"[{self.label}]"
         return self.label
 
 
@@ -251,8 +252,8 @@ def _commands() -> tuple[Command, ...]:
             "mtr_exits",
             "Heavy-rail exit coordinates",
             (
-                "Coordinates of heavy-rail station exits. Latitude and longitude are already converted.",
-                "With no arguments this returns every station. Pass --station for one station.",
+                "Coordinates of one station's exits. Latitude and longitude are already converted.",
+                "Give a station name. This returns that station only.",
                 "This is a snapshot of about one year. Do not download it again.",
                 "If note says the snapshot is older than a year, say so and still use the coordinates.",
                 "This command does not pick the nearest station. A distance you compute is straight-line, not walking time.",
@@ -261,9 +262,10 @@ def _commands() -> tuple[Command, ...]:
             (
                 Arg(
                     "station",
-                    "Station name, in Chinese or English. Omit to include every station.",
+                    "Station name, in Chinese or English. Required.",
                     flag="--station",
                     metavar="station",
+                    required=True,
                 ),
             ),
         ),
@@ -358,7 +360,7 @@ def _parser() -> argparse.ArgumentParser:
         item = sub.add_parser(command.name, add_help=False, usage=command.synopsis)
         for arg in command.args:
             if arg.flag:
-                kwargs: dict = {"help": arg.text}
+                kwargs: dict = {"help": arg.text, "required": arg.required}
                 if arg.kind is not None:
                     kwargs["type"] = arg.kind
                 item.add_argument(arg.flag, **kwargs)

@@ -97,7 +97,7 @@ Each command answers one kind of question. These are phase 1.
 | `mtr_next_train` | Next trains, terminus, platform, and any service alert |
 | `mtr_ride_estimate` | In-vehicle minutes, estimated from live arrivals |
 | `mtr_barrier_free` | Which barrier-free facilities a station has, and at which exit |
-| `mtr_exits` | Exit coordinates — all stations, or one |
+| `mtr_exits` | Exit coordinates for one station |
 
 **Light Rail and feeders**
 

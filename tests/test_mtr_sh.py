@@ -78,13 +78,20 @@ def test_missing_argument_is_usage():
 
 
 def test_mtr_exits_prints_the_envelope():
-    result = _run("mtr_exits")
+    result = _run("mtr_exits", "--station", "金鐘")
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     assert payload["update_frequency"] == "yearly"
     assert payload["data"]
+    assert {row["station_zh"] for row in payload["data"]} == {"金鐘"}
     assert payload["data"][0]["latitude"]
     assert payload["data"][0]["longitude"]
+
+
+def test_mtr_exits_requires_a_station():
+    result = _run("mtr_exits")
+    assert result.returncode == 2
+    assert result.stdout == ""
 
 
 def test_mtr_exits_can_target_one_station():

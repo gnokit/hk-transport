@@ -97,7 +97,7 @@ bash mtr.sh mtr_next_train 港島線 金鐘                # 問一條問題
 | `mtr_next_train` | 下一班、終點站、月台，以及特別車務安排 |
 | `mtr_ride_estimate` | 車上大約幾耐，用實時到站時間估算 |
 | `mtr_barrier_free` | 一個站有哪些無障礙設施、在哪個出口 |
-| `mtr_exits` | 出口座標——全部車站，或指定一個 |
+| `mtr_exits` | 一個車站的出口座標 |
 
 **輕鐵與接駁**
 
