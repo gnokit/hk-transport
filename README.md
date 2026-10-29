@@ -1,58 +1,141 @@
-# 港交寶
+# 🚇 hk-transport · 港交寶
 
-港交寶（倉庫名 `hk-transport`）是香港公共交通的 AI skill。它向代理提供工具，由代理用這些工具回答市民的交通問題。
+![Python](https://img.shields.io/badge/python-3.13%2B-blue)
+![uv](https://img.shields.io/badge/managed%20by-uv-261230)
+![data](https://img.shields.io/badge/data-data.gov.hk-0b7285)
+![MIT](https://img.shields.io/badge/licence-MIT-green)
+![tests](https://github.com/gnokit/hk-transport/actions/workflows/tests.yml/badge.svg)
 
-這是 [`hkdata`](https://github.com/gnokit/hkdata) 的專門版。`hkdata` 覆蓋 data.gov.hk 的全部開放數據。這裡只做交通，而且每個工具對準市民會問的那一類問題：某線有哪些站、兩站怎樣轉車、車費幾多、下一班幾時到。
+**An AI skill that answers Hong Kong MTR questions — built for an agent, not for a chat window.**
 
-Skill 本身不跟市民對話，也不替市民選定行程。
+Every tool answers one kind of citizen question, and every answer carries its own source: the dataset, the endpoint actually called, and the time the data describes.
 
-## 現況
+English · [繁體中文](README.zh.md)
 
-規格寫在 [docs/TASKS.md](docs/TASKS.md)。第一階段（港鐵）已實作。後面的交通系統尚未定階段。
+---
 
-代理說明在 [SKILL.md](SKILL.md)。`$SKILL_DIR` 是技能安裝目錄。回答時執行 `bash ${SKILL_DIR}/mtr.sh`。沒有參數會列出每個命令一行，`help <command>` 是該命令的說明。命令會繼續增加，功能表以 `mtr.sh` 為準。
+## What this is
 
-工具分兩層：
+`hk-transport` gives an AI agent tools for Hong Kong's MTR. The agent talks to the person; the tools supply facts. That split is deliberate:
 
-- `hk_transport.mtr_core` 每個函式對應一份港鐵數據。每月 CSV 下載後放在技能目錄的 `.cache/`，30 日內重用。這個目錄已寫入 `.gitignore`。三個實時 API 在查詢當下才呼叫，不進快取。
-- `address_lookup` 查地政總署地址同座標。它是位置問題的核心，不快取，也不自己挑選最近的車站。
-- `mtr_exits` 交還重鐵站出入口座標，可以只給一個站名。快照在 `src/hk_transport/data/mtr_exits.json`，約一年內重用，查詢時不重新下載。東距、北距是香港 1980 方格網；緯度、經度由地政總署坐標轉換寫入同一份快照。它不挑選最近的車站。
-- `special_traffic_news` 交還運輸署現時的特別交通消息。`special_traffic_arrangements` 交還預先公布的特別交通及運輸安排。兩份都是全港消息，查詢時才下載，不按港鐵篩選。港鐵某一線的警報仍看 `mtr_next_train`；有警報時，它的 note 會提示再查 `special_traffic_news`。
-- `hk_transport` 的函式回答下面 10 條問題，另外 `mtr_ride_estimate` 估算車上分鐘。它們只呼叫核心層，自己不下載。
+- The tools **do not chat**, do not choose a "best route" for anyone, and never fill a gap with a plausible number.
+- When the published data cannot support an answer, `data` is `null` and `note` says why.
+- A missing field stays empty and is explained — it is never replaced from a different ticket type, a different file, or a guess.
 
-程式庫也可以直接呼叫：
+It is the transport-focused sibling of [`hkdata`](https://github.com/gnokit/hkdata): `hkdata` covers all of data.gov.hk, this repo is only transport, with one tool per question a citizen actually asks.
 
-```python
-from hk_transport import mtr_journey, mtr_fare, mtr_next_train
+## Quick start
 
-mtr_journey("柴灣", "荃灣")
-mtr_fare("中環", "紅磡")
-mtr_next_train("港島線", "金鐘")
+```bash
+git clone <this repo> && cd hk-transport
+bash mtr.sh                                          # the manual: one line per command
+bash mtr.sh help mtr_next_train                      # that command's arguments
+bash mtr.sh mtr_next_train 港島線 金鐘                # ask a question
 ```
 
-每個結果都有 `dataset_id`、`endpoint`、`retrieved_at`（擷取時間）和 `data_at`（數據時間，每月 CSV 為 `null`）。時間是香港時間。
+`mtr.sh` prints one JSON envelope. Trimmed, from a real call:
 
-第一階段的 9 個工具要能回答這 10 條：
+```json
+{
+  "dataset_id": ["mtr-data-routes-fares-barrier-free-facilities", "mtr-data2-nexttrain-data"],
+  "endpoint": ["…/mtr_lines_and_stations.csv", "…/getSchedule.php?line=ISL&sta=ADM&lang=tc"],
+  "data_at": "2026-10-29T12:58:16+08:00",
+  "update_frequency": "10s",
+  "data": {
+    "line_zh": "港島線",
+    "station": { "id": "2", "code": "ADM", "name_zh": "金鐘", "name_en": "Admiralty" },
+    "directions": [{ "direction": "UP", "trains": [{ "dest": { "name_zh": "柴灣" }, "platform": "3", "ttnt": "2" }] }]
+  },
+  "note": "這次回應沒有特別安排"
+}
+```
 
-1. 某條線有哪些站？某個站屬於哪幾條線？
-2. 由甲站去乙站，乘哪條線、在哪裡轉車？
-3. 兩個重鐵站之間，八達通同單程票各票種幾多錢？
-4. 這一站、這一線，下一班幾時到、哪個終點、哪個月台？
-5. 這次回應有沒有特別車務安排？
-6. 機場快線去機場或博覽館，成人同小童幾多錢？下一班用第 4 條。
-7. 這個站有哪些無障礙設施、在哪個出口？
-8. 輕鐵這一站下一班是幾號、去哪、還有幾多分鐘？
-9. 輕鐵兩站之間幾多錢？某條線停哪些站？
-10. 港鐵接駁巴士停哪、車費幾多、下一班幾時到？
+`data_at` is the time the data describes, in Hong Kong time — kept separate from `retrieved_at`, when it was fetched. A monthly file has no timestamp, so `data_at` is `null` and `update_frequency` carries the truth instead.
 
-每個工具回傳可序列化的 JSON，並帶三樣東西：資料集編號、實際查過的端點、數據本身的時間（香港時間）。
+## What you can ask
 
-## 第一階段的範圍
+**Heavy rail**
 
-港鐵本地重鐵、機場快線、迪士尼線、輕鐵，以及輕鐵接駁的港鐵巴士。資料是 data.gov.hk 上港鐵公布的 4 個數據集，端點列在 [docs/TASKS.md](docs/TASKS.md)。
+| Command | Answers |
+|---|---|
+| `mtr_lines` | Which stations a line has, or which lines serve a station |
+| `mtr_journey` | Which line to ride, where to transfer, stations in between |
+| `mtr_fare` | Octopus and single-journey fare, every ticket type in the file |
+| `mtr_airport_express_fare` | Airport Express fare — adult and child only |
+| `mtr_next_train` | Next trains, terminus, platform, and any service alert |
+| `mtr_ride_estimate` | In-vehicle minutes, estimated from live arrivals |
+| `mtr_barrier_free` | Which barrier-free facilities a station has, and at which exit |
+| `mtr_exits` | Exit coordinates — all stations, or one |
 
-這一階段的工具不回答：頭班車與尾班車、去某座大廈該行哪個出口、車廂或月台擠迫程度、高速鐵路、城際客運。重鐵站出入口的座標在 `mtr_exits`。公開數據沒有公布的行車分鐘。`mtr_ride_estimate` 用相鄰站的實時到站時間估算車上分鐘；某一段的班次對不齊時，全程留空。
+**Light Rail and feeders**
 
-## 資料來源
+| Command | Answers |
+|---|---|
+| `light_rail` | Stop order on a route, or the fare between two stops |
+| `light_rail_next` | Next departures from one stop, special departures marked |
+| `mtr_bus` | Feeder-bus stops, per-route fare, and next arrivals |
 
-數據來自 [DATA.GOV.HK](https://data.gov.hk) 上香港鐵路有限公司公布的數據集，地政總署的地址查詢、地理位置搜尋和坐標轉換，以及運輸署的特別交通消息和特別交通及運輸安排。使用時受其 [條款](https://data.gov.hk/tc/terms-and-conditions) 約束。本倉庫的授權尚未決定。
+**Location and traffic**
+
+| Command | Answers |
+|---|---|
+| `address_lookup` | Match a place name or address, with coordinates |
+| `special_traffic_news` | Current territory-wide traffic incidents |
+| `special_traffic_arrangements` | Traffic arrangements published in advance |
+
+Station input accepts a Chinese name, an English name, a station id (`2`), or a code (`ADM`). Names must be spelled as published. If a name matches more than one station, the tools say so rather than picking one.
+
+## Design rules
+
+These are the reason the repo exists, not decoration.
+
+- ✅ **Never invent a figure.** No published trip time exists, so `mtr_ride_estimate` derives minutes from live arrivals — and returns `null` for the whole trip when any link's trains don't agree.
+- ✅ **Every answer is auditable.** `dataset_id`, the endpoint called, `data_at`, `update_frequency`, and per-source detail in `sources`.
+- ✅ **Absence is stated, not smoothed over.** No alert becomes 「這次回應沒有特別安排」 — never "all services normal".
+- ✅ **Caching is explicit.** Monthly CSVs live 30 days in `.cache/`; live APIs and the traffic feeds are never cached; the exit snapshot is reused for about a year.
+- ✅ **Straight-line is not walking time.** A distance computed from coordinates is labelled as what it is.
+- 🚫 **No politeness, no itinerary.** The tool returns facts; the agent writes the sentence.
+
+## Architecture
+
+```mermaid
+graph LR
+  A[Agent] --> B[mtr.sh<br/>manual + CLI]
+  B --> C[mtr.py<br/>one function per question]
+  C --> D[mtr_core.py<br/>one function per dataset]
+  C --> E[als.py · exits.py · notices.py]
+  D --> F[(data.gov.hk · MTR)]
+  E --> G[(Lands Department · Transport Department)]
+```
+
+Two layers, plus small shared modules (`_result` envelope, `_http` fetch, `_values` cell reading). `mtr.py` holds no URL and no cache; it only composes core functions. A new question reuses existing core functions — only a new data source adds one.
+
+Scope is specified in [docs/TASKS.md](docs/TASKS.md); agent-facing instructions are in [SKILL.md](SKILL.md).
+
+## Scope
+
+| In | Out |
+|---|---|
+| MTR heavy rail, Airport Express, Disneyland Resort Line | Franchised bus, green minibus, red minibus, tram, ferry, taxi |
+| Light Rail and MTR feeder buses | High-speed rail, cross-boundary rail, intercity services |
+| Address lookup, station exits, barrier-free facilities | Which exit serves a particular building |
+| Territory-wide traffic news and advance arrangements | Crowding levels, first and last trains |
+
+## Data sources & licence
+
+Data comes from [DATA.GOV.HK](https://data.gov.hk): four MTR datasets, plus the Lands Department address lookup, location search and coordinate transform, and the Transport Department's traffic news and advance arrangements. Use is subject to the [data.gov.hk terms](https://data.gov.hk/tc/terms-and-conditions).
+
+This repository's own code is [MIT licensed](LICENSE).
+
+## Development
+
+```bash
+uv run pytest                          # 66 offline tests
+uv run pytest -m live -o addopts=      # 8 live checks against the real endpoints
+```
+
+The offline suite is what CI runs. Live tests call data.gov.hk, so they are opt-in and never gate a build.
+
+## Status
+
+Phase 1 is complete: 14 commands covering heavy rail, Airport Express, Disneyland Resort Line, Light Rail, feeder buses, addresses, exits, and the two Transport Department feeds. Later phases are undecided — see [docs/TASKS.md](docs/TASKS.md).
