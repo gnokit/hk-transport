@@ -20,7 +20,7 @@ class _Response:
 def test_cache_reuses_a_copy_younger_than_30_days(monkeypatch):
     calls = []
 
-    def fake_get(url, timeout):
+    def fake_get(url, timeout, headers=None):
         calls.append(url)
         return _Response("line,name\nA,金鐘\n")
 
@@ -38,7 +38,7 @@ def test_cache_reuses_a_copy_younger_than_30_days(monkeypatch):
 def test_cache_refreshes_after_30_days(monkeypatch):
     calls = []
 
-    def fake_get(url, timeout):
+    def fake_get(url, timeout, headers=None):
         calls.append("hit")
         return _Response("new")
 
@@ -56,7 +56,7 @@ def test_cache_refreshes_after_30_days(monkeypatch):
 
 
 def test_http_error_names_the_dataset(monkeypatch):
-    def fake_get(url, timeout):
+    def fake_get(url, timeout, headers=None):
         return _Response("nope", status=500)
 
     monkeypatch.setattr("hk_transport._http.requests.get", fake_get)

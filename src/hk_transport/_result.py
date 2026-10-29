@@ -58,6 +58,15 @@ def envelope(
     }
 
 
+def _is_live(frequency: str) -> bool:
+    """True for an update frequency written as seconds, such as 10s or 60s."""
+    return (
+        isinstance(frequency, str)
+        and frequency.endswith("s")
+        and frequency[:-1].isdigit()
+    )
+
+
 def compose(sources: list[dict], data: object, note: str | None = None) -> dict:
     """One envelope over core results. Each source keeps its own timestamp.
 
@@ -80,9 +89,15 @@ def compose(sources: list[dict], data: object, note: str | None = None) -> dict:
             retrieved.extend(retrieved_at)
         else:
             retrieved.append(retrieved_at)
-    live = [source for source in sources if source["update_frequency"] == "10s"]
+    live = [source for source in sources if _is_live(source["update_frequency"])]
     if live:
-        frequency: str | list[str] = "10s"
+        live_frequencies: list[str] = []
+        for source in live:
+            if source["update_frequency"] not in live_frequencies:
+                live_frequencies.append(source["update_frequency"])
+        frequency: str | list[str] = (
+            live_frequencies[0] if len(live_frequencies) == 1 else live_frequencies
+        )
         data_at: str | None | list[str | None] = (
             live[0]["data_at"]
             if len(live) == 1

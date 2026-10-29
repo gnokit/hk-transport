@@ -10,11 +10,10 @@ minutes from live arrivals and leaves the total empty when a link does not agree
 
 from __future__ import annotations
 
-import heapq
 from collections import defaultdict
 from datetime import datetime, timedelta
 
-from hk_transport import mtr_core
+from hk_transport import _graph, mtr_core
 from hk_transport._result import NO_ALERT, compose
 
 ALERT_CHECK_NEWS = (
@@ -306,46 +305,26 @@ def _journey_path(rows: list[dict], origin_ids: list[str], dest_ids: list[str]) 
     if not starts or not ends:
         return None
 
-    best: dict[int, tuple[int, int]] = {}
-    previous: dict[int, tuple[int, str]] = {}
-    heap: list[tuple[int, int, int]] = []
-    for start in starts:
-        best[start] = (0, 0)
-        heapq.heappush(heap, (0, 0, start))
-    found: int | None = None
-    while heap:
-        transfer_count, ride_count, node = heapq.heappop(heap)
-        if best.get(node) != (transfer_count, ride_count):
-            continue
-        if node in ends:
-            found = node
-            break
-        for nxt in rides[node]:
-            cost = (transfer_count, ride_count + 1)
-            if nxt not in best or cost < best[nxt]:
-                best[nxt] = cost
-                previous[nxt] = (node, "ride")
-                heapq.heappush(heap, (*cost, nxt))
-        for nxt in transfers[node]:
-            cost = (transfer_count + 1, ride_count)
-            if nxt not in best or cost < best[nxt]:
-                best[nxt] = cost
-                previous[nxt] = (node, "transfer")
-                heapq.heappush(heap, (*cost, nxt))
-    if found is None:
+    edges: list[tuple[int, int, str]] = []
+    for left, targets in rides.items():
+        for right in targets:
+            edges.append((left, right, _graph.RIDE))
+    for left, targets in transfers.items():
+        for right in targets:
+            edges.append((left, right, _graph.TRANSFER))
+    found = _graph.journeys(len(platforms), edges, starts, ends, k=1)
+    if not found:
         return None
-
-    chain = [found]
-    while chain[-1] in previous:
-        chain.append(previous[chain[-1]][0])
-    chain.reverse()
+    route = found[0]
+    chain = list(route.nodes)
+    kinds = list(route.kinds)
 
     legs = []
     walked = []
     index = 0
     while index < len(chain) - 1:
-        kind = previous[chain[index + 1]][1]
-        if kind == "transfer":
+        kind = kinds[index]
+        if kind == _graph.TRANSFER:
             walked.append(
                 {
                     "from": _view(platforms[chain[index]]),
@@ -355,7 +334,7 @@ def _journey_path(rows: list[dict], origin_ids: list[str], dest_ids: list[str]) 
             index += 1
             continue
         end = index
-        while end + 1 < len(chain) and previous[chain[end + 1]][1] == "ride":
+        while end + 1 < len(chain) and kinds[end] == _graph.RIDE:
             end += 1
         first = platforms[chain[index]]
         zh, en = _line_names(first["line_code"])
@@ -371,7 +350,7 @@ def _journey_path(rows: list[dict], origin_ids: list[str], dest_ids: list[str]) 
             }
         )
         index = end
-    transfer_count, ride_count = best[found]
+    transfer_count, ride_count = route.transfers, route.rides
     return {
         "transfers": transfer_count,
         "ride_count": ride_count,

@@ -19,6 +19,9 @@ from hk_transport._result import HKT, MtrError, now_hkt
 _CACHE_TTL = timedelta(days=30)
 
 
+USER_AGENT = {"User-Agent": "hk-transport"}
+
+
 def project_root() -> Path:
     for parent in Path(__file__).resolve().parents:
         if (parent / "pyproject.toml").is_file():
@@ -44,7 +47,13 @@ def _fresh(retrieved_at: str) -> bool:
     return datetime.now(HKT) - fetched < _CACHE_TTL
 
 
-def fetch_text(url: str, *, dataset_id: str, timeout: float = 30) -> tuple[str, str]:
+def fetch_text(
+    url: str,
+    *,
+    dataset_id: str,
+    timeout: float = 30,
+    headers: dict | None = None,
+) -> tuple[str, str]:
     """Return the CSV text and when it was downloaded. Reuse a copy younger than 30 days."""
     digest = hashlib.sha256(url.encode("utf-8")).hexdigest()
     directory = cache_dir()
@@ -55,7 +64,9 @@ def fetch_text(url: str, *, dataset_id: str, timeout: float = 30) -> tuple[str, 
         if meta.get("url") == url and _fresh(meta["retrieved_at"]):
             return body_path.read_text(encoding="utf-8"), meta["retrieved_at"]
     try:
-        response = requests.get(url, timeout=timeout)
+        response = requests.get(
+            url, timeout=timeout, headers={**USER_AGENT, **(headers or {})}
+        )
         response.raise_for_status()
     except requests.RequestException as exc:
         raise MtrError(str(exc), dataset_id=dataset_id, endpoint=url) from exc
@@ -70,3 +81,36 @@ def fetch_text(url: str, *, dataset_id: str, timeout: float = 30) -> tuple[str, 
         encoding="utf-8",
     )
     return text, retrieved_at
+
+
+def fetch_json(
+    url: str,
+    *,
+    dataset_id: str,
+    timeout: float = 30,
+    cache: bool = True,
+    headers: dict | None = None,
+) -> tuple[object, str]:
+    """Return a JSON payload and when it was retrieved.
+
+    `cache=True` reuses the 30-day copy used by the monthly tables. Live feeds
+    pass `cache=False` and are never written to disk.
+    """
+    if cache:
+        text, retrieved_at = fetch_text(
+            url, dataset_id=dataset_id, timeout=timeout, headers=headers
+        )
+    else:
+        try:
+            response = requests.get(
+                url, timeout=timeout, headers={**USER_AGENT, **(headers or {})}
+            )
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            raise MtrError(str(exc), dataset_id=dataset_id, endpoint=url) from exc
+        text = response.content.decode("utf-8-sig")
+        retrieved_at = now_hkt()
+    try:
+        return json.loads(text), retrieved_at
+    except ValueError as exc:
+        raise MtrError(str(exc), dataset_id=dataset_id, endpoint=url) from exc
