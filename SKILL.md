@@ -31,6 +31,16 @@ No arguments and `help` print the same page: a short introduction, then one line
 
 If you do not know a station, stop, or line name, run `mtr_lines` first. `mtr_lines --line 東鐵線` lists the stations on one line; `mtr_lines --station 金鐘` lists the lines through one station. The name must match the official spelling exactly — the file spells 茘枝角 with 茘, not 荔. A station id (`2`) or code (`ADM`) also works, and is never ambiguous.
 
+## When a name does not match
+
+A command may answer 「找不到車站：…」 or 「找不到路線：…」, or 「這個站不在這條線上。」 That means the input did not match the published name — not that the place has no station.
+
+- Do not guess a similar station, and do not re-run the same input expecting a different result.
+- Run `mtr_lines` to check the official spelling — `--line` for the stations on a line, `--station` for the lines through a station — then run the command again with that name, the station id, or the code.
+- Check the line as well as the station: a correct station name on the wrong line is still a failure. `mtr_lines --station` settles which lines serve it.
+- Common traps: 茘枝角 is spelled with 茘; English names use the published form (`Tsim Sha Tsui`, `AsiaWorld-Expo`); 中環, 香港 and 機場快線香港站 are different names for one interchange area.
+- If it still does not resolve, say the skill cannot find that station. Do not substitute a nearby one.
+
 ## When a name matches more than one station
 
 A few names are two stations: 香港 has an Airport Express id and a Tung Chung line id. A command may answer with `matches` (or `origin_matches` and `destination_matches`), with one entry per matching station, or with one fare pair per station, and says so in `note`.
