@@ -14,6 +14,7 @@ from hk_transport.mtr import (
     mtr_next_train,
     mtr_ride_estimate,
 )
+from hk_transport.notices import special_traffic_arrangements, special_traffic_news
 
 __version__ = "0.1.0"
 
@@ -30,4 +31,6 @@ __all__ = [
     "mtr_lines",
     "mtr_next_train",
     "mtr_ride_estimate",
+    "special_traffic_arrangements",
+    "special_traffic_news",
 ]

@@ -17,6 +17,10 @@ from datetime import datetime, timedelta
 from hk_transport import mtr_core
 from hk_transport._result import NO_ALERT, compose
 
+ALERT_CHECK_NEWS = (
+    "這一站這一線的回應有特別安排。全港特別交通消息要再查 special_traffic_news。"
+)
+
 # Codes published in mtr_lines_and_stations.csv. The CSV has no line names.
 LINES = {
     "AEL": ("機場快線", "Airport Express"),
@@ -603,7 +607,8 @@ def mtr_next_train(line: str, station: str) -> dict:
     市民會問：下一班幾時到？哪個月台？終點站是哪？而家有沒有特別車務安排？
 
     這不是頭班車或尾班車。沒有警報時，note 是「這次回應沒有特別安排」，
-    不會寫成全線正常。
+    不會寫成全線正常。有警報時，note 提示再查 `special_traffic_news`。
+    這裡不代為下載那份全港消息。
     """
     lines = mtr_core.lines_and_stations()
     rows = lines["data"]
@@ -660,7 +665,7 @@ def mtr_next_train(line: str, station: str) -> dict:
             "directions": directions,
             "alert": alert,
         },
-        note=None if alert else NO_ALERT,
+        note=ALERT_CHECK_NEWS if alert else NO_ALERT,
     )
 
 

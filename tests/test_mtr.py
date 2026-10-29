@@ -2,6 +2,7 @@ from pathlib import Path
 
 from hk_transport import mtr
 from hk_transport._result import NO_ALERT
+from hk_transport.mtr import ALERT_CHECK_NEWS
 
 
 def envelope(data, **overrides):
@@ -161,6 +162,33 @@ def test_no_alert_uses_the_prescribed_note(monkeypatch):
     assert result["data"]["alert"] is None
     assert "全線正常" not in (result["note"] or "")
     assert result["data"]["directions"][0]["trains"][0]["dest"]["name_zh"] == "柴灣"
+
+
+def test_alert_tells_the_agent_to_check_traffic_news(monkeypatch):
+    monkeypatch.setattr(mtr.mtr_core, "lines_and_stations", lambda: envelope(NETWORK))
+    monkeypatch.setattr(
+        mtr.mtr_core,
+        "next_train",
+        lambda line, station: envelope(
+            {
+                "status": 0,
+                "message": "觀塘線服務延誤",
+                "url": "https://example.test/mtr-news",
+                "isdelay": "Y",
+                "directions": [],
+            },
+            dataset_id="mtr-data2-nexttrain-data",
+            endpoint="https://example.test/next",
+            data_at="2026-10-29T11:00:00+08:00",
+            update_frequency="10s",
+        ),
+    )
+    result = mtr.mtr_next_train("港島線", "金鐘")
+    assert result["data"]["alert"]["status"] == 0
+    assert result["data"]["alert"]["message"] == "觀塘線服務延誤"
+    assert result["data"]["alert"]["url"] == "https://example.test/mtr-news"
+    assert result["note"] == ALERT_CHECK_NEWS
+    assert "special_traffic_news" in result["note"]
 
 
 def test_barrier_free_drops_rows_that_are_not_present(monkeypatch):
