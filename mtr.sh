@@ -37,13 +37,7 @@ from hk_transport import (
     special_traffic_news,
 )
 from hk_transport._result import MtrError
-
-
-def _text(value: str | None) -> str | None:
-    if value is None:
-        return None
-    text = value.strip()
-    return text or None
+from hk_transport._values import blank
 
 
 def _required(value: str) -> str:
@@ -100,7 +94,7 @@ def _commands() -> tuple[Command, ...]:
                 "Station order on a heavy-rail line, or which lines serve a station.",
                 "Give a line, a station, or both. With no arguments, list every line.",
             ),
-            lambda ns: mtr_lines(line=_text(ns.line), station=_text(ns.station)),
+            lambda ns: mtr_lines(line=blank(ns.line), station=blank(ns.station)),
             (
                 Arg("line", "Line name. Omit to include every line.", flag="--line", metavar="line"),
                 Arg(
@@ -206,9 +200,9 @@ def _commands() -> tuple[Command, ...]:
                 "Give a route, or both an origin and a destination.",
             ),
             lambda ns: light_rail(
-                line=_text(ns.line),
-                origin=_text(ns.origin),
-                destination=_text(ns.destination),
+                line=blank(ns.line),
+                origin=blank(ns.origin),
+                destination=blank(ns.destination),
             ),
             (
                 Arg("line", "Route number, for example 610.", flag="--line", metavar="route"),
@@ -263,7 +257,7 @@ def _commands() -> tuple[Command, ...]:
                 "If note says the snapshot is older than a year, say so and still use the coordinates.",
                 "This command does not pick the nearest station. A distance you compute is straight-line, not walking time.",
             ),
-            lambda ns: mtr_exits(_text(ns.station)),
+            lambda ns: mtr_exits(blank(ns.station)),
             (
                 Arg(
                     "station",
@@ -377,22 +371,23 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _wants_page(argv: list[str]) -> str | None:
-    """Return a command name when the user asked for its manual page."""
-    if not argv:
-        return ""
-    if argv[0] in {"-h", "--help"}:
-        return ""
+def _page_request(argv: list[str]) -> tuple[bool, str | None]:
+    """Whether a manual page was asked for, and which command it describes.
+
+    The command is None for the index page, which every command shares.
+    """
+    if not argv or argv[0] in {"-h", "--help"}:
+        return True, None
     if argv[0] == "help":
         if len(argv) == 1:
-            return ""
+            return True, None
         if len(argv) == 2:
-            return argv[1]
+            return True, argv[1]
         print("usage: mtr.sh help <command>", file=sys.stderr)
         raise SystemExit(2)
     if argv[0] in BY_NAME and any(token in {"-h", "--help"} for token in argv[1:]):
-        return argv[0]
-    return None
+        return True, argv[0]
+    return False, None
 
 
 def _emit(result: dict) -> None:
@@ -402,11 +397,11 @@ def _emit(result: dict) -> None:
 
 def main(argv: list[str]) -> int:
     sys.stdout.reconfigure(encoding="utf-8")
-    page = _wants_page(argv)
-    if page == "":
+    wants_page, page = _page_request(argv)
+    if wants_page and page is None:
         sys.stdout.write(index_page())
         return 0
-    if page is not None:
+    if wants_page:
         text = command_page(page)
         if text is None:
             print(f"no such command: {page}", file=sys.stderr)

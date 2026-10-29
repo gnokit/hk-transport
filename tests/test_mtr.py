@@ -602,6 +602,19 @@ def test_ride_estimate_has_no_upper_cap(monkeypatch):
     assert result["data"]["minutes"] == 9
 
 
+def test_route_fare_unifies_duplicate_rows_and_reports_two_sets():
+    rows = [
+        {"route_id": "K52", "fares": {"FARE_OCTO_ADULT": "5.1"}},
+        {"route_id": "K52", "fares": {"FARE_OCTO_ADULT": "5.1"}},
+    ]
+    assert mtr._route_fare(rows, "K52") == ({"FARE_OCTO_ADULT": "5.1"}, None)
+    rows.append({"route_id": "K52", "fares": {"FARE_OCTO_ADULT": "6"}})
+    fare, note = mtr._route_fare(rows, "K52")
+    assert len(fare) == 2
+    assert "多於一套車費" in note
+    assert mtr._route_fare([], "K52") == (None, "車費檔沒有這條路線。")
+
+
 def test_compose_with_no_sources_invents_nothing():
     result = compose([], None, note="要給路線，或同時給起點同終點。")
     assert result["dataset_id"] is None

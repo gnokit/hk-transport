@@ -21,6 +21,12 @@ ALERT_CHECK_NEWS = (
     "這一站這一線的回應有特別安排。全港特別交通消息要再查 special_traffic_news。"
 )
 UNKNOWN_SERVICE = "這次回應沒有車務狀態，不能說有沒有特別安排。"
+STATION_AMBIGUOUS = "這個名稱對應多於一個車站。"
+PAIRS_AMBIGUOUS = "這個名稱對應多於一個車站，以下是每一對的車費。"
+JOURNEY_AMBIGUOUS = "這個名稱對應多於一個車站，沒有選其中一條路徑。"
+LINE_STATION_AMBIGUOUS = "這個站名在這條線上對應多於一個車站代碼。"
+LIGHT_RAIL_STOP_AMBIGUOUS = "這個名稱對應多於一個輕鐵站，沒有查下一班。"
+ROUTE_AMBIGUOUS = "這個名稱對應多於一條路線。"
 
 # Codes published in mtr_lines_and_stations.csv. The CSV has no line names.
 LINES = {
@@ -36,8 +42,10 @@ LINES = {
     "TWL": ("荃灣線", "Tsuen Wan Line"),
 }
 
-# AEL Hong Kong, TCL Hong Kong, and Central use different ids for one interchange.
-_ALIAS = {"1", "39", "44"}
+# One physical interchange, three station ids: AEL Hong Kong (44), TCL Hong
+# Kong (39), and Central (1). The key is deliberately not a station id, so a
+# transfer point cannot be mistaken for a station.
+INTERCHANGES = {"central-hong-kong": frozenset({"1", "39", "44"})}
 
 DOMESTIC_FARE_COLUMNS = (
     "OCT_ADT_FARE",
@@ -82,26 +90,44 @@ def _line_names(code: str) -> tuple[str | None, str | None]:
     return LINES.get(code, (None, None))
 
 
-def _matches(row: dict, query: str) -> bool:
+def _matches(row: dict, query: str, id_key: str, code_key: str | None) -> bool:
+    """One row answers to an id, a code, or a name written in either language."""
     folded = query.casefold()
-    return (
-        row["id"] == mtr_core.norm_id(query)
-        or row["code"].casefold() == folded
-        or row["name_zh"] == query
-        or row["name_en"].casefold() == folded
-    )
+    row_id = row.get(id_key) or ""
+    if row_id == mtr_core.norm_id(query) or row_id.casefold() == folded:
+        return True
+    if code_key is not None and (row.get(code_key) or "").casefold() == folded:
+        return True
+    return row["name_zh"] == query or (row.get("name_en") or "").casefold() == folded
+
+
+def _match_rows(
+    query: str,
+    rows: list[dict],
+    id_key: str = "id",
+    code_key: str | None = "code",
+) -> list[dict]:
+    """Rows matching the query, preferring an exact id over a name."""
+    text = query.strip()
+    exact = [
+        row
+        for row in rows
+        if (row.get(id_key) or "") == mtr_core.norm_id(text)
+        or (row.get(id_key) or "").casefold() == text.casefold()
+    ]
+    if exact:
+        return exact
+    return [row for row in rows if _matches(row, text, id_key, code_key)]
 
 
 def _match_ids(query: str, rows: list[dict]) -> list[str]:
     found: list[str] = []
     seen: set[str] = set()
-    text = query.strip()
-    for row in rows:
+    for row in _match_rows(query, rows):
         if row["id"] in seen:
             continue
-        if _matches(row, text):
-            seen.add(row["id"])
-            found.append(row["id"])
+        seen.add(row["id"])
+        found.append(row["id"])
     return found
 
 
@@ -161,7 +187,20 @@ def _group_lines(rows: list[dict]) -> list[dict]:
 
 
 def _ambiguous(ids: list[str]) -> bool:
-    return len(ids) > 1 and not set(ids) <= _ALIAS
+    return len(ids) > 1 and not _all_one_interchange(ids)
+
+
+def _interchange_of(station_id: str) -> str | None:
+    for key, ids in INTERCHANGES.items():
+        if station_id in ids:
+            return key
+    return None
+
+
+def _all_one_interchange(ids: list[str]) -> bool:
+    """True when every matched id is another name for the same interchange."""
+    keys = {_interchange_of(station_id) for station_id in ids}
+    return len(keys) == 1 and None not in keys
 
 
 def _project(fares: dict, columns: tuple[str, ...]) -> tuple[dict, list[str]]:
@@ -178,6 +217,19 @@ def _join_notes(*parts: str | None) -> str | None:
     if not kept:
         return None
     return " ".join(kept)
+
+
+def _matches_result(source: dict, matches: list[dict], note: str) -> dict:
+    """A result that names the candidates instead of choosing one."""
+    return compose([source], {"matches": matches}, note=note)
+
+
+def _fare_note_rows(found: bool, missing: list[str], absent: str) -> str | None:
+    """The two notes a fare table can produce, written once for every table."""
+    return _join_notes(
+        None if found else absent,
+        f"車費檔沒有這些欄：{', '.join(missing)}。" if missing else None,
+    )
 
 
 def mtr_lines(line: str | None = None, station: str | None = None) -> dict:
@@ -209,7 +261,7 @@ def mtr_lines(line: str | None = None, station: str | None = None) -> dict:
         for station_id in ids:
             mine = [row for row in chosen if row["id"] == station_id]
             stations.append({"station": _view(reps[station_id]), "lines": _group_lines(mine)})
-        note = "這個名稱對應多於一個車站。" if len(ids) > 1 else None
+        note = STATION_AMBIGUOUS if len(ids) > 1 else None
         return compose([source], {"stations": stations}, note=note)
     if not chosen:
         return compose([source], None, note=f"找不到路線：{line}")
@@ -217,9 +269,7 @@ def mtr_lines(line: str | None = None, station: str | None = None) -> dict:
 
 
 def _transfer_key(station_id: str) -> str:
-    if station_id in _ALIAS:
-        return "central-hk"
-    return station_id
+    return _interchange_of(station_id) or station_id
 
 
 def _journey_path(rows: list[dict], origin_ids: list[str], dest_ids: list[str]) -> dict | None:
@@ -346,7 +396,7 @@ def _journey_query(origin: str, destination: str) -> tuple[dict, dict | None, st
                 "origin_matches": [_view(reps[station_id]) for station_id in origin_ids],
                 "destination_matches": [_view(reps[station_id]) for station_id in dest_ids],
             },
-            "這個名稱對應多於一個車站，沒有選其中一條路徑。",
+            JOURNEY_AMBIGUOUS,
         )
     reps = _representatives(rows)
     if set(origin_ids) & set(dest_ids):
@@ -602,11 +652,8 @@ def mtr_fare(origin: str, destination: str) -> dict:
         origin_ids, dest_ids, lines["data"], fares["data"], DOMESTIC_FARE_COLUMNS
     )
     note = _join_notes(
-        "這個名稱對應多於一個車站，以下是每一對的車費。"
-        if len(origin_ids) > 1 or len(dest_ids) > 1
-        else None,
-        None if found else "車費檔沒有這一對車站。",
-        f"車費檔沒有這些欄：{', '.join(missing)}。" if missing else None,
+        PAIRS_AMBIGUOUS if len(origin_ids) > 1 or len(dest_ids) > 1 else None,
+        _fare_note_rows(found, missing, "車費檔沒有這一對車站。"),
     )
     return compose([lines, fares], {"pairs": pairs}, note=note)
 
@@ -667,37 +714,30 @@ def mtr_next_train(line: str, station: str) -> dict:
             codes.append(row["code"])
     if len(codes) > 1:
         reps = _representatives(rows)
-        return compose(
-            [lines],
-            {"matches": [_view(reps[row["id"]]) for row in on_line]},
-            note="這個站名在這條線上對應多於一個車站代碼。",
+        return _matches_result(
+            lines,
+            [_view(reps[row["id"]]) for row in on_line],
+            LINE_STATION_AMBIGUOUS,
         )
     live = mtr_core.next_train(line_code, codes[0])
     directions = []
     for direction in live["data"]["directions"]:
-        trains = []
-        for train in direction["trains"]:
-            trains.append(
-                {
-                    "seq": train["seq"],
-                    "dest": _station_by_code(rows, train["dest"]),
-                    "platform": train["platform"],
-                    "time": train["time"],
-                    "ttnt": train["ttnt"],
-                    "valid": train["valid"],
-                }
-            )
-        directions.append({"direction": direction["direction"], "trains": trains})
+        directions.append(
+            {
+                "direction": direction["direction"],
+                "trains": [
+                    {**train, "dest": _station_by_code(rows, train["dest"])}
+                    for train in direction["trains"]
+                ],
+            }
+        )
     zh, en = _line_names(line_code)
     state = _service_state(live["data"])
-    alert = None
-    if state == "alert":
-        alert = {
-            "status": live["data"]["status"],
-            "message": live["data"]["message"],
-            "url": live["data"]["url"],
-            "isdelay": live["data"]["isdelay"],
-        }
+    alert = (
+        {key: live["data"][key] for key in ("status", "message", "url", "isdelay")}
+        if state == "alert"
+        else None
+    )
     if state == "alert":
         note = ALERT_CHECK_NEWS
     elif state == "normal":
@@ -738,12 +778,9 @@ def mtr_airport_express_fare(origin: str, destination: str) -> dict:
         origin_ids, dest_ids, lines["data"], fares["data"], AEL_FARE_COLUMNS
     )
     note = _join_notes(
-        "這個名稱對應多於一個車站，以下是每一對的車費。"
-        if len(origin_ids) > 1 or len(dest_ids) > 1
-        else None,
-        None if found else "機場快線車費檔沒有這一對車站。",
+        PAIRS_AMBIGUOUS if len(origin_ids) > 1 or len(dest_ids) > 1 else None,
+        _fare_note_rows(found, missing, "機場快線車費檔沒有這一對車站。"),
         "機場快線車費檔只有成人同小童。",
-        f"車費檔沒有這些欄：{', '.join(missing)}。" if missing else None,
     )
     return compose([lines, fares], {"pairs": pairs}, note=note)
 
@@ -789,7 +826,7 @@ def mtr_barrier_free(station: str) -> dict:
                 }
             )
         stations.append({"station": _view(reps[station_id]), "facilities": items})
-    note = "這個名稱對應多於一個車站。" if len(ids) > 1 else None
+    note = STATION_AMBIGUOUS if len(ids) > 1 else None
     return compose([lines, facilities, categories], {"stations": stations}, note=note)
 
 
@@ -809,10 +846,10 @@ def light_rail_next(station: str) -> dict:
         return compose([routes], None, note=_missing(station))
     if len(ids) > 1:
         reps = _representatives(routes["data"])
-        return compose(
-            [routes],
-            {"matches": [_view(reps[station_id]) for station_id in ids]},
-            note="這個名稱對應多於一個輕鐵站，沒有查下一班。",
+        return _matches_result(
+            routes,
+            [_view(reps[station_id]) for station_id in ids],
+            LIGHT_RAIL_STOP_AMBIGUOUS,
         )
     live = mtr_core.light_rail_next_train(ids[0])
     return compose(
@@ -823,6 +860,32 @@ def light_rail_next(station: str) -> dict:
             "platforms": live["data"]["platforms"],
         },
     )
+
+
+def _light_rail_lines(line: str, routes: dict) -> dict | None:
+    """Stop order for one Light Rail route, or None when the route is unknown."""
+    code = _resolve_line(line, routes["data"])
+    chosen = [row for row in routes["data"] if row["line_code"] == code] if code else []
+    if not chosen:
+        return None
+    return _group_lines(chosen)
+
+
+def _light_rail_fares(
+    origin_ids: list[str],
+    dest_ids: list[str],
+    routes: dict,
+    fares: dict,
+) -> tuple[list[dict], str | None]:
+    """Fare pairs for two Light Rail stops, with their note."""
+    pairs, missing, found = _fare_pairs(
+        origin_ids, dest_ids, routes["data"], fares["data"], LR_FARE_COLUMNS
+    )
+    note = _join_notes(
+        PAIRS_AMBIGUOUS if len(origin_ids) > 1 or len(dest_ids) > 1 else None,
+        _fare_note_rows(found, missing, "輕鐵車費檔沒有這一對車站。"),
+    )
+    return pairs, note
 
 
 def light_rail(
@@ -846,11 +909,10 @@ def light_rail(
     payload: dict = {}
     notes: list[str | None] = []
     if line is not None:
-        code = _resolve_line(line, routes["data"])
-        chosen = [row for row in routes["data"] if row["line_code"] == code] if code else []
-        if not chosen:
+        lines = _light_rail_lines(line, routes)
+        if lines is None:
             return compose([routes], None, note=f"找不到輕鐵路線：{line}")
-        payload["lines"] = _group_lines(chosen)
+        payload["lines"] = lines
     if origin or destination:
         if not origin or not destination:
             return compose([routes], None, note="車費要同時給起點同終點。")
@@ -861,27 +923,32 @@ def light_rail(
             return compose([routes], None, note=_missing(missing))
         fares = mtr_core.light_rail_fares()
         sources.append(fares)
-        pairs, missing, found = _fare_pairs(
-            origin_ids, dest_ids, routes["data"], fares["data"], LR_FARE_COLUMNS
-        )
-        payload["pairs"] = pairs
-        notes.append(None if found else "輕鐵車費檔沒有這一對車站。")
-        notes.append(f"車費檔沒有這些欄：{', '.join(missing)}。" if missing else None)
-        if len(origin_ids) > 1 or len(dest_ids) > 1:
-            notes.append("這個名稱對應多於一個車站，以下是每一對的車費。")
+        payload["pairs"], note = _light_rail_fares(origin_ids, dest_ids, routes, fares)
+        notes.append(note)
     return compose(sources, payload, note=_join_notes(*notes))
 
 
 def _match_routes(query: str, routes: list[dict]) -> list[dict]:
-    folded = query.strip().casefold()
-    exact = [row for row in routes if row["route_id"].casefold() == folded]
-    if exact:
-        return exact
-    return [
-        row
-        for row in routes
-        if row["name_zh"] == query.strip() or row["name_en"].casefold() == folded
-    ]
+    """Bus routes answer to their route id or either name."""
+    return _match_rows(query, routes, id_key="route_id", code_key=None)
+
+
+def _route_fare(fare_rows: list[dict], route_id: str) -> tuple[dict | list[dict] | None, str | None]:
+    """The fare set for one route, and a note when there is not exactly one.
+
+    A bus fare belongs to the route, and the file may repeat the same set on
+    more than one row; those rows are one fare. The work stays here because
+    `mtr_core` returns whole tables and never filters.
+    """
+    sets: list[dict] = []
+    for row in fare_rows:
+        if row["route_id"] == route_id and row["fares"] not in sets:
+            sets.append(row["fares"])
+    if not sets:
+        return None, "車費檔沒有這條路線。"
+    if len(sets) == 1:
+        return sets[0], None
+    return sets, "這條路線有多於一套車費。"
 
 
 def mtr_bus(route: str) -> dict:
@@ -901,19 +968,17 @@ def mtr_bus(route: str) -> dict:
         return compose([routes], None, note=f"找不到港鐵巴士路線：{route}")
     route_ids = list(dict.fromkeys(row["route_id"] for row in matched))
     if len(route_ids) > 1:
-        return compose(
-            [routes],
-            {
-                "matches": [
-                    {
-                        "route_id": row["route_id"],
-                        "name_zh": row["name_zh"],
-                        "name_en": row["name_en"],
-                    }
-                    for row in matched
-                ]
-            },
-            note="這個名稱對應多於一條路線。",
+        return _matches_result(
+            routes,
+            [
+                {
+                    "route_id": row["route_id"],
+                    "name_zh": row["name_zh"],
+                    "name_en": row["name_en"],
+                }
+                for row in matched
+            ],
+            ROUTE_AMBIGUOUS,
         )
     route_id = route_ids[0]
     variants = [row for row in routes["data"] if row["route_id"] == route_id]
@@ -922,19 +987,7 @@ def mtr_bus(route: str) -> dict:
     schedule = mtr_core.bus_schedule(route_id)
     mine = [row for row in stops["data"] if row["route_id"] == route_id]
     mine.sort(key=lambda row: (row["direction"], row["sequence"]))
-    unique_fares: list[dict] = []
-    for row in fares["data"]:
-        if row["route_id"] == route_id and row["fares"] not in unique_fares:
-            unique_fares.append(row["fares"])
-    note = None
-    if not unique_fares:
-        fare = None
-        note = "車費檔沒有這條路線。"
-    elif len(unique_fares) == 1:
-        fare = unique_fares[0]
-    else:
-        fare = unique_fares
-        note = "這條路線有多於一套車費。"
+    fare, fare_note = _route_fare(fares["data"], route_id)
     return compose(
         [routes, stops, fares, schedule],
         {
@@ -951,5 +1004,5 @@ def mtr_bus(route: str) -> dict:
             "fare": fare,
             "eta": schedule["data"],
         },
-        note=note,
+        note=fare_note,
     )

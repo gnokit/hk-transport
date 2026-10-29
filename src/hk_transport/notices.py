@@ -14,6 +14,7 @@ from xml.etree import ElementTree
 import requests
 
 from hk_transport._result import MtrError, as_hkt, envelope, now_hkt
+from hk_transport._values import blank, number
 
 NEWS_DATASET = "hk-td-tis_19-special-traffic-news-v2"
 NEWS_URL = "https://www.td.gov.hk/tc/special_news/trafficnews.xml"
@@ -43,15 +44,8 @@ class _Text(HTMLParser):
         self.parts.append(data)
 
 
-def _blank(value: str | None) -> str | None:
-    if value is None:
-        return None
-    text = value.strip()
-    return text or None
-
-
 def _plain(value: str | None) -> str | None:
-    text = _blank(value)
+    text = blank(value)
     if text is None:
         return None
     parser = _Text()
@@ -62,7 +56,7 @@ def _plain(value: str | None) -> str | None:
     cleaned = re.sub(r"\n[ \t]+", "\n", cleaned)
     cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
-    return _blank(cleaned)
+    return blank(cleaned)
 
 
 def _local(tag: str) -> str:
@@ -86,41 +80,31 @@ def _xml(url: str, *, dataset_id: str) -> ElementTree.Element:
         raise MtrError(str(exc), dataset_id=dataset_id, endpoint=url) from exc
 
 
-def _float(value: str | None) -> float | None:
-    text = _blank(value)
-    if text is None:
-        return None
-    try:
-        return float(text)
-    except ValueError:
-        return None
-
-
 def _news_item(fields: dict[str, str]) -> dict:
     return {
-        "incident_number": _blank(fields.get("INCIDENT_NUMBER")),
-        "id": _blank(fields.get("ID")),
-        "heading_zh": _blank(fields.get("INCIDENT_HEADING_CN")),
-        "heading_en": _blank(fields.get("INCIDENT_HEADING_EN")),
-        "detail_zh": _blank(fields.get("INCIDENT_DETAIL_CN")),
-        "detail_en": _blank(fields.get("INCIDENT_DETAIL_EN")),
-        "location_zh": _blank(fields.get("LOCATION_CN")),
-        "location_en": _blank(fields.get("LOCATION_EN")),
-        "district_zh": _blank(fields.get("DISTRICT_CN")),
-        "district_en": _blank(fields.get("DISTRICT_EN")),
-        "direction_zh": _blank(fields.get("DIRECTION_CN")),
-        "direction_en": _blank(fields.get("DIRECTION_EN")),
-        "announcement_at": as_hkt(_blank(fields.get("ANNOUNCEMENT_DATE"))),
-        "status_zh": _blank(fields.get("INCIDENT_STATUS_CN")),
-        "status_en": _blank(fields.get("INCIDENT_STATUS_EN")),
-        "near_landmark_zh": _blank(fields.get("NEAR_LANDMARK_CN")),
-        "near_landmark_en": _blank(fields.get("NEAR_LANDMARK_EN")),
-        "between_landmark_zh": _blank(fields.get("BETWEEN_LANDMARK_CN")),
-        "between_landmark_en": _blank(fields.get("BETWEEN_LANDMARK_EN")),
-        "content_zh": _blank(fields.get("CONTENT_CN")),
-        "content_en": _blank(fields.get("CONTENT_EN")),
-        "latitude": _float(fields.get("LATITUDE")),
-        "longitude": _float(fields.get("LONGITUDE")),
+        "incident_number": blank(fields.get("INCIDENT_NUMBER")),
+        "id": blank(fields.get("ID")),
+        "heading_zh": blank(fields.get("INCIDENT_HEADING_CN")),
+        "heading_en": blank(fields.get("INCIDENT_HEADING_EN")),
+        "detail_zh": blank(fields.get("INCIDENT_DETAIL_CN")),
+        "detail_en": blank(fields.get("INCIDENT_DETAIL_EN")),
+        "location_zh": blank(fields.get("LOCATION_CN")),
+        "location_en": blank(fields.get("LOCATION_EN")),
+        "district_zh": blank(fields.get("DISTRICT_CN")),
+        "district_en": blank(fields.get("DISTRICT_EN")),
+        "direction_zh": blank(fields.get("DIRECTION_CN")),
+        "direction_en": blank(fields.get("DIRECTION_EN")),
+        "announcement_at": as_hkt(blank(fields.get("ANNOUNCEMENT_DATE"))),
+        "status_zh": blank(fields.get("INCIDENT_STATUS_CN")),
+        "status_en": blank(fields.get("INCIDENT_STATUS_EN")),
+        "near_landmark_zh": blank(fields.get("NEAR_LANDMARK_CN")),
+        "near_landmark_en": blank(fields.get("NEAR_LANDMARK_EN")),
+        "between_landmark_zh": blank(fields.get("BETWEEN_LANDMARK_CN")),
+        "between_landmark_en": blank(fields.get("BETWEEN_LANDMARK_EN")),
+        "content_zh": blank(fields.get("CONTENT_CN")),
+        "content_en": blank(fields.get("CONTENT_EN")),
+        "latitude": number(fields.get("LATITUDE")),
+        "longitude": number(fields.get("LONGITUDE")),
     }
 
 
@@ -160,13 +144,13 @@ def special_traffic_news() -> dict:
 
 def _arrangement(fields: dict[str, str]) -> dict:
     return {
-        "id": _blank(fields.get("TNID")),
-        "type_id": _blank(fields.get("TrafficNoticesTypeID")),
-        "district_id": _blank(fields.get("TrafficNoticesDistrictID")),
-        "title_zh": _blank(fields.get("Title_TC")),
-        "title_en": _blank(fields.get("Title_EN")),
-        "title_sc": _blank(fields.get("Title_SC")),
-        "start_date": _blank(fields.get("StartEffectiveDate")),
+        "id": blank(fields.get("TNID")),
+        "type_id": blank(fields.get("TrafficNoticesTypeID")),
+        "district_id": blank(fields.get("TrafficNoticesDistrictID")),
+        "title_zh": blank(fields.get("Title_TC")),
+        "title_en": blank(fields.get("Title_EN")),
+        "title_sc": blank(fields.get("Title_SC")),
+        "start_date": blank(fields.get("StartEffectiveDate")),
         "content_zh": _plain(fields.get("Content_TC")),
         "content_en": _plain(fields.get("Content_EN")),
         "content_sc": _plain(fields.get("Content_SC")),

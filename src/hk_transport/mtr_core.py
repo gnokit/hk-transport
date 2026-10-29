@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import csv
 import io
+from dataclasses import dataclass
+from functools import partial
 from urllib.parse import urlencode
 
 import requests
 
 from hk_transport._http import _fresh, fetch_text
 from hk_transport._result import MtrError, as_hkt, envelope, now_hkt
+from hk_transport._values import blank, number
 
 STATIC_DATASET = "mtr-data-routes-fares-barrier-free-facilities"
 _OPEN = "https://opendata.mtr.com.hk/data/"
@@ -57,29 +60,6 @@ def norm_id(value: str | None) -> str:
     return text
 
 
-# A cell holding only a dash is the publisher saying "no value", not a value.
-_NO_VALUE = {"-", "—", "–"}
-
-
-def _blank(value: str | None) -> str | None:
-    if value is None:
-        return None
-    text = value.strip()
-    if text in _NO_VALUE:
-        return None
-    return text or None
-
-
-def _number(value: str | None) -> float | None:
-    text = _blank(value)
-    if text is None:
-        return None
-    try:
-        return float(text)
-    except ValueError:
-        return None
-
-
 def _flag(value: str | None) -> bool:
     return (value or "").strip().lower() in {"1", "y", "true"}
 
@@ -91,17 +71,17 @@ def _rows(text: str) -> list[dict[str, str]]:
 def _parse_stops(text: str, *, code_key: str, id_key: str) -> list[dict]:
     records = []
     for row in _rows(text):
-        line_code = _blank(row.get("Line Code"))
+        line_code = blank(row.get("Line Code"))
         if not line_code:
             continue
         records.append(
             {
                 "line_code": line_code,
-                "direction": _blank(row.get("Direction")) or "",
-                "code": _blank(row.get(code_key)) or "",
+                "direction": blank(row.get("Direction")) or "",
+                "code": blank(row.get(code_key)) or "",
                 "id": norm_id(row.get(id_key)),
-                "name_zh": _blank(row.get("Chinese Name")) or "",
-                "name_en": _blank(row.get("English Name")) or "",
+                "name_zh": blank(row.get("Chinese Name")) or "",
+                "name_en": blank(row.get("English Name")) or "",
                 "sequence": int(float(row["Sequence"])),
             }
         )
@@ -116,32 +96,51 @@ def _parse_lr_routes(text: str) -> list[dict]:
     return _parse_stops(text, code_key="Stop Code", id_key="Stop ID")
 
 
-def _parse_fare_table(
-    text: str,
-    *,
-    from_id: str,
-    to_id: str,
-    from_name: str | None,
-    to_name: str | None,
-) -> list[dict]:
-    skip = {from_id, to_id, from_name, to_name}
+@dataclass(frozen=True)
+class FareColumns:
+    """Which columns of a fare table name its two stations."""
+
+    from_id: str
+    to_id: str
+    from_name: str | None = None
+    to_name: str | None = None
+
+
+DOMESTIC_KEYS = FareColumns(
+    from_id="SRC_STATION_ID",
+    to_id="DEST_STATION_ID",
+    from_name="SRC_STATION_NAME",
+    to_name="DEST_STATION_NAME",
+)
+AEL_KEYS = FareColumns(
+    from_id="ST_FROM_ID",
+    to_id="ST_TO_ID",
+    from_name="ST_FROM",
+    to_name="ST_TO",
+)
+LIGHT_RAIL_KEYS = FareColumns(from_id="from_station_id", to_id="to_station_id")
+
+
+def _parse_fare_table(text: str, columns: FareColumns) -> list[dict]:
+    """Read one fare table. Everything that is not a station column is a fare."""
+    skip = {columns.from_id, columns.to_id, columns.from_name, columns.to_name}
     records = []
     for row in _rows(text):
-        origin = norm_id(row.get(from_id))
-        dest = norm_id(row.get(to_id))
+        origin = norm_id(row.get(columns.from_id))
+        dest = norm_id(row.get(columns.to_id))
         if not origin or not dest:
             continue
         fares = {}
         for key, value in row.items():
             if key is None or key in skip:
                 continue
-            fares[key] = _blank(value)
+            fares[key] = blank(value)
         records.append(
             {
                 "from_id": origin,
                 "to_id": dest,
-                "from_name": _blank(row.get(from_name)) if from_name else None,
-                "to_name": _blank(row.get(to_name)) if to_name else None,
+                "from_name": blank(row.get(columns.from_name)) if columns.from_name else None,
+                "to_name": blank(row.get(columns.to_name)) if columns.to_name else None,
                 "fares": fares,
             }
         )
@@ -151,16 +150,16 @@ def _parse_fare_table(
 def _parse_categories(text: str) -> list[dict]:
     records = []
     for row in _rows(text):
-        key = _blank(row.get("Item_Code"))
+        key = blank(row.get("Item_Code"))
         if not key:
             continue
         records.append(
             {
                 "key": key,
-                "category_zh": _blank(row.get("Category_Zh")),
-                "category_en": _blank(row.get("Category_En")),
-                "name_zh": _blank(row.get("Facility_Zh")),
-                "name_en": _blank(row.get("Facility_En")),
+                "category_zh": blank(row.get("Category_Zh")),
+                "category_en": blank(row.get("Category_En")),
+                "name_zh": blank(row.get("Facility_Zh")),
+                "name_en": blank(row.get("Facility_En")),
             }
         )
     return records
@@ -170,7 +169,7 @@ def _parse_facilities(text: str) -> list[dict]:
     records = []
     for row in _rows(text):
         station_id = norm_id(row.get("Station_No"))
-        key = _blank(row.get("Key"))
+        key = blank(row.get("Key"))
         if not station_id or not key:
             continue
         records.append(
@@ -178,9 +177,9 @@ def _parse_facilities(text: str) -> list[dict]:
                 "station_id": station_id,
                 "key": key,
                 "present": (row.get("Value") or "").strip().upper() == "Y",
-                "exit_zh": _blank(row.get("AJTextZh")),
-                "exit_en": _blank(row.get("AJTextEn")),
-                "coordinate": _blank(row.get("Exit_Coordinate_X_Y")),
+                "exit_zh": blank(row.get("AJTextZh")),
+                "exit_en": blank(row.get("AJTextEn")),
+                "coordinate": blank(row.get("Exit_Coordinate_X_Y")),
             }
         )
     return records
@@ -189,14 +188,14 @@ def _parse_facilities(text: str) -> list[dict]:
 def _parse_bus_routes(text: str) -> list[dict]:
     records = []
     for row in _rows(text):
-        route_id = _blank(row.get("ROUTE_ID"))
+        route_id = blank(row.get("ROUTE_ID"))
         if not route_id:
             continue
         records.append(
             {
                 "route_id": route_id,
-                "name_zh": _blank(row.get("ROUTE_NAME_CHI")) or "",
-                "name_en": _blank(row.get("ROUTE_NAME_ENG")) or "",
+                "name_zh": blank(row.get("ROUTE_NAME_CHI")) or "",
+                "name_en": blank(row.get("ROUTE_NAME_ENG")) or "",
                 "circular": _flag(row.get("IS_CIRCULAR")),
             }
         )
@@ -206,19 +205,19 @@ def _parse_bus_routes(text: str) -> list[dict]:
 def _parse_bus_stops(text: str) -> list[dict]:
     records = []
     for row in _rows(text):
-        route_id = _blank(row.get("ROUTE_ID"))
+        route_id = blank(row.get("ROUTE_ID"))
         if not route_id:
             continue
         records.append(
             {
                 "route_id": route_id,
-                "direction": _blank(row.get("DIRECTION")) or "",
+                "direction": blank(row.get("DIRECTION")) or "",
                 "sequence": int(float(row["STATION_SEQNO"])),
                 "id": norm_id(row.get("STATION_ID")),
-                "name_zh": _blank(row.get("STATION_NAME_CHI")) or "",
-                "name_en": _blank(row.get("STATION_NAME_ENG")) or "",
-                "latitude": _number(row.get("STATION_LATITUDE")),
-                "longitude": _number(row.get("STATION_LONGITUDE")),
+                "name_zh": blank(row.get("STATION_NAME_CHI")) or "",
+                "name_en": blank(row.get("STATION_NAME_ENG")) or "",
+                "latitude": number(row.get("STATION_LATITUDE")),
+                "longitude": number(row.get("STATION_LONGITUDE")),
             }
         )
     return records
@@ -227,14 +226,14 @@ def _parse_bus_stops(text: str) -> list[dict]:
 def _parse_bus_fares(text: str) -> list[dict]:
     records = []
     for row in _rows(text):
-        route_id = _blank(row.get("ROUTE_ID"))
+        route_id = blank(row.get("ROUTE_ID"))
         if not route_id:
             continue
         fares = {}
         for key, value in row.items():
             if key is None or key in {"ROUTE_ID", "REFERENCE_ID"}:
                 continue
-            fares[key] = _blank(value)
+            fares[key] = blank(value)
         records.append({"route_id": route_id, "fares": fares})
     return records
 
@@ -286,13 +285,7 @@ def domestic_fares() -> dict:
     """
     return _table(
         DOMESTIC_FARES_URL,
-        lambda text: _parse_fare_table(
-            text,
-            from_id="SRC_STATION_ID",
-            to_id="DEST_STATION_ID",
-            from_name="SRC_STATION_NAME",
-            to_name="DEST_STATION_NAME",
-        ),
+        partial(_parse_fare_table, columns=DOMESTIC_KEYS),
     )
 
 
@@ -305,13 +298,7 @@ def airport_express_fares() -> dict:
     """
     return _table(
         AEL_FARES_URL,
-        lambda text: _parse_fare_table(
-            text,
-            from_id="ST_FROM_ID",
-            to_id="ST_TO_ID",
-            from_name="ST_FROM",
-            to_name="ST_TO",
-        ),
+        partial(_parse_fare_table, columns=AEL_KEYS),
     )
 
 
@@ -355,13 +342,7 @@ def light_rail_fares() -> dict:
     """
     return _table(
         LR_FARES_URL,
-        lambda text: _parse_fare_table(
-            text,
-            from_id="from_station_id",
-            to_id="to_station_id",
-            from_name=None,
-            to_name=None,
-        ),
+        partial(_parse_fare_table, columns=LIGHT_RAIL_KEYS),
     )
 
 
@@ -414,12 +395,12 @@ def _live(url: str, *, dataset_id: str, method: str = "GET", body: dict | None =
 
 def _train(row: dict) -> dict:
     return {
-        "seq": _blank(row.get("seq")),
-        "dest": _blank(row.get("dest")),
-        "platform": _blank(row.get("plat")),
-        "time": _blank(row.get("time")),
-        "ttnt": _blank(row.get("ttnt")),
-        "valid": _blank(row.get("valid")),
+        "seq": blank(row.get("seq")),
+        "dest": blank(row.get("dest")),
+        "platform": blank(row.get("plat")),
+        "time": blank(row.get("time")),
+        "ttnt": blank(row.get("ttnt")),
+        "valid": blank(row.get("valid")),
     }
 
 
@@ -450,15 +431,15 @@ def next_train(line: str, station: str) -> dict:
         dataset_id=NEXT_DATASET,
         endpoint=endpoint,
         retrieved_at=retrieved_at,
-        data_at=as_hkt(_blank(payload.get("curr_time")) or _blank(entry.get("curr_time"))),
+        data_at=as_hkt(blank(payload.get("curr_time")) or blank(entry.get("curr_time"))),
         update_frequency="10s",
         data={
             "status": payload.get("status"),
-            "message": _blank(payload.get("message")),
-            "url": _blank(payload.get("url")),
-            "isdelay": _blank(payload.get("isdelay")),
-            "curr_time": _blank(payload.get("curr_time")),
-            "sys_time": _blank(payload.get("sys_time")),
+            "message": blank(payload.get("message")),
+            "url": blank(payload.get("url")),
+            "isdelay": blank(payload.get("isdelay")),
+            "curr_time": blank(payload.get("curr_time")),
+            "sys_time": blank(payload.get("sys_time")),
             "directions": directions,
         },
     )
@@ -483,13 +464,13 @@ def light_rail_next_train(station_id: str, with_special: int = 1) -> dict:
                 continue
             trains.append(
                 {
-                    "route_no": _blank(row.get("route_no")),
-                    "dest_zh": _blank(row.get("dest_ch")),
-                    "dest_en": _blank(row.get("dest_en")),
-                    "time_zh": _blank(row.get("time_ch")),
-                    "time_en": _blank(row.get("time_en")),
+                    "route_no": blank(row.get("route_no")),
+                    "dest_zh": blank(row.get("dest_ch")),
+                    "dest_en": blank(row.get("dest_en")),
+                    "time_zh": blank(row.get("time_ch")),
+                    "time_en": blank(row.get("time_en")),
                     "special": row.get("special") in {1, "1", True},
-                    "arrival_departure": _blank(row.get("arrival_departure")),
+                    "arrival_departure": blank(row.get("arrival_departure")),
                     "train_length": row.get("train_length"),
                 }
             )
@@ -498,11 +479,11 @@ def light_rail_next_train(station_id: str, with_special: int = 1) -> dict:
         dataset_id=LR_NEXT_DATASET,
         endpoint=endpoint,
         retrieved_at=retrieved_at,
-        data_at=as_hkt(_blank(payload.get("system_time"))),
+        data_at=as_hkt(blank(payload.get("system_time"))),
         update_frequency="10s",
         data={
             "status": payload.get("status"),
-            "system_time": _blank(payload.get("system_time")),
+            "system_time": blank(payload.get("system_time")),
             "platforms": platforms,
         },
     )
@@ -511,16 +492,16 @@ def light_rail_next_train(station_id: str, with_special: int = 1) -> dict:
 def _bus_trip(row: dict) -> dict:
     location = row.get("busLocation") if isinstance(row.get("busLocation"), dict) else {}
     return {
-        "arrival_time_text": _blank(row.get("arrivalTimeText")),
-        "departure_time_text": _blank(row.get("departureTimeText")),
+        "arrival_time_text": blank(row.get("arrivalTimeText")),
+        "departure_time_text": blank(row.get("departureTimeText")),
         "is_scheduled": _flag(str(row.get("isScheduled"))),
         "is_delayed": _flag(str(row.get("isDelayed"))),
         "location": {
             "latitude": location.get("latitude"),
             "longitude": location.get("longitude"),
         },
-        "line_ref": _blank(row.get("lineRef")),
-        "bus_id": _blank(row.get("busId")),
+        "line_ref": blank(row.get("lineRef")),
+        "bus_id": blank(row.get("busId")),
     }
 
 
@@ -542,7 +523,7 @@ def bus_schedule(route_name: str, language: str = "zh") -> dict:
             continue
         stops.append(
             {
-                "stop_id": _blank(stop.get("busStopId")),
+                "stop_id": blank(stop.get("busStopId")),
                 "suspended": _flag(str(stop.get("isSuspended"))),
                 "buses": [
                     _bus_trip(row)
@@ -555,14 +536,14 @@ def bus_schedule(route_name: str, language: str = "zh") -> dict:
         dataset_id=BUS_DATASET,
         endpoint=BUS_URL,
         retrieved_at=retrieved_at,
-        data_at=as_hkt(_blank(payload.get("routeStatusTime"))),
+        data_at=as_hkt(blank(payload.get("routeStatusTime"))),
         update_frequency="10s",
         data={
-            "route_name": _blank(payload.get("routeName")) or route_name,
+            "route_name": blank(payload.get("routeName")) or route_name,
             "status": payload.get("status"),
-            "route_status": _blank(payload.get("routeStatus")),
-            "route_status_remark_title": _blank(payload.get("routeStatusRemarkTitle")),
-            "route_status_remark": _blank(payload.get("routeStatusRemarkContent")),
+            "route_status": blank(payload.get("routeStatus")),
+            "route_status_remark_title": blank(payload.get("routeStatusRemarkTitle")),
+            "route_status_remark": blank(payload.get("routeStatusRemarkContent")),
             "stops": stops,
         },
     )

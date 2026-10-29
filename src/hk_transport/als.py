@@ -11,20 +11,14 @@ from urllib.parse import urlencode
 import requests
 
 from hk_transport._result import MtrError, envelope, now_hkt
+from hk_transport._values import blank
 
 DATASET_ID = "hk-dpo-als_01-als"
 LOOKUP_URL = "https://www.als.gov.hk/lookup"
 
 
-def _blank(value: object) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
-
-
 def _street_number(chinese: dict, english: dict, key: str) -> str | None:
-    return _blank(chinese.get(key)) or _blank(english.get(key))
+    return blank(chinese.get(key)) or blank(english.get(key))
 
 
 def _match(item: dict) -> dict:
@@ -36,23 +30,23 @@ def _match(item: dict) -> dict:
     geo = premises.get("GeospatialInformation") or {}
     score = (item.get("ValidationInformation") or {}).get("Score")
     return {
-        "building_zh": _blank(chinese.get("BuildingName")),
-        "building_en": _blank(english.get("BuildingName")),
-        "estate_zh": _blank((chinese.get("ChiEstate") or {}).get("EstateName")),
-        "estate_en": _blank((english.get("EngEstate") or {}).get("EstateName")),
-        "street_zh": _blank(chinese_street.get("StreetName")),
-        "street_en": _blank(english_street.get("StreetName")),
+        "building_zh": blank(chinese.get("BuildingName")),
+        "building_en": blank(english.get("BuildingName")),
+        "estate_zh": blank((chinese.get("ChiEstate") or {}).get("EstateName")),
+        "estate_en": blank((english.get("EngEstate") or {}).get("EstateName")),
+        "street_zh": blank(chinese_street.get("StreetName")),
+        "street_en": blank(english_street.get("StreetName")),
         "number_from": _street_number(chinese_street, english_street, "BuildingNoFrom"),
         "number_to": _street_number(chinese_street, english_street, "BuildingNoTo"),
-        "district_zh": _blank((chinese.get("ChiDistrict") or {}).get("DcDistrict")),
-        "district_en": _blank((english.get("EngDistrict") or {}).get("DcDistrict")),
-        "region_zh": _blank(chinese.get("Region")),
-        "region_en": _blank(english.get("Region")),
-        "latitude": _blank(geo.get("Latitude")),
-        "longitude": _blank(geo.get("Longitude")),
-        "northing": _blank(geo.get("Northing")),
-        "easting": _blank(geo.get("Easting")),
-        "geo_address": _blank(premises.get("GeoAddress")),
+        "district_zh": blank((chinese.get("ChiDistrict") or {}).get("DcDistrict")),
+        "district_en": blank((english.get("EngDistrict") or {}).get("DcDistrict")),
+        "region_zh": blank(chinese.get("Region")),
+        "region_en": blank(english.get("Region")),
+        "latitude": blank(geo.get("Latitude")),
+        "longitude": blank(geo.get("Longitude")),
+        "northing": blank(geo.get("Northing")),
+        "easting": blank(geo.get("Easting")),
+        "geo_address": blank(premises.get("GeoAddress")),
         "score": score if isinstance(score, (int, float)) else None,
     }
 
