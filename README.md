@@ -32,12 +32,27 @@ It is the transport-focused sibling of [`hkdata`](https://github.com/gnokit/hkda
 
 ### Roadmap
 
-| Phase | Mode | Status |
-|---|---|---|
-| 1 | MTR: heavy rail, Airport Express, Disneyland Resort Line, Light Rail, feeder buses, addresses, exits, traffic feeds | ✅ 14 commands |
-| later | Franchised bus, green minibus, red minibus, tram, ferry, taxi, cross-boundary and high-speed rail | not started |
+Phase 1 ships one entry script, `mtr.sh`. Every later phase adds a sibling script built the same way — `bus.sh`, `minibus.sh`, `tram.sh` — so an agent learns the pattern once and the modes stay independent.
 
-Each later phase gets its scope written into [docs/TASKS.md](docs/TASKS.md) before any code. Until then the skill answers MTR questions and says so when a question is outside that.
+| Phase | Modes | Entry script | Status |
+|---|---|---|---|
+| 1 | MTR heavy rail, Airport Express, Disneyland Resort Line, Light Rail, feeder buses | `mtr.sh` | ✅ 14 commands |
+| 2 | Franchised buses | `bus.sh` | not started |
+| 3 | Green minibus, red minibus | `minibus.sh` | not started |
+| 4 | Tram, ferry | `tram.sh`, `ferry.sh` | not started |
+| 5 | Taxi, cross-boundary and high-speed rail | `taxi.sh`, `rail.sh` | not started |
+
+Every phase ships the same five things:
+
+1. **A scope section in [docs/TASKS.md](docs/TASKS.md)** — written before any code.
+2. **A core module** — one function per dataset, whole tables, no filtering.
+3. **An answer module** — one function per citizen question, no URL, no cache.
+4. **An entry script `<mode>.sh`** — same manual: no arguments lists commands, `help <command>` explains one, stdout is JSON.
+5. **Tests** — offline by default, plus `live`-marked checks that never gate CI.
+
+What phase 1 built stays shared rather than copied: the result envelope (`_result`), the 30-day fetch cache (`_http`), cell reading (`_values`), address lookup (`als`), and the two Transport Department feeds (`notices`).
+
+Two honest caveats: nothing in phases 2–5 exists yet, and the order above is a plan, not a commitment — each phase's real scope gets written into `docs/TASKS.md` first. KMB and ferry code already lives in [`hkdata`](https://github.com/gnokit/hkdata); those phases decide whether to move it or wrap it.
 
 ## Quick start
 

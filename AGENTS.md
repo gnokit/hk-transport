@@ -27,6 +27,8 @@ uv run pytest -m live -o addopts=
 
 第一階段 1.1 至 1.10 已在 `mtr.py`。`address_lookup`、`mtr_exits`、`special_traffic_news`、`special_traffic_arrangements` 是核心函式，不在 `mtr.py`。後面的交通系統可以重用這兩份運輸署消息。尚未寫進 `docs/TASKS.md` 的交通系統不要先做。這包括專營巴士、綠色專線小巴、香港電車、渡輪、的士、紅色小巴、跨境鐵路。`hkdata` 裡已有的九巴和新渡輪程式留在 `hkdata`，不複製過來。
 
+每個交通模式的入口是 `<mode>.sh`，做法同 `mtr.sh` 一樣：冇參數列出該模式的指令，`help <command>` 講參數，stdout 係一段 JSON。路線圖見 [README](../README.md)。
+
 ## 港鐵資料裡容易答錯的地方
 
 - 東鐵線有羅湖和落馬洲兩條分支（`DT`／`UT` 與 `LMC-DT`／`LMC-UT`）。將軍澳線有康城分支（`TKS-DT`／`TKS-UT`）。一條線的車站按方向交還。
