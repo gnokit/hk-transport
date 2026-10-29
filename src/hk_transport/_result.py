@@ -39,7 +39,7 @@ def as_hkt(value: str | None) -> str | None:
 
 def envelope(
     *,
-    dataset_id: str,
+    dataset_id: str | list[str],
     endpoint: str | list[str],
     retrieved_at: str | list[str],
     data_at: str | None | list[str | None],

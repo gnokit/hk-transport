@@ -1,6 +1,7 @@
 """Tools for answering Hong Kong public-transport questions."""
 
 from hk_transport.als import address_lookup
+from hk_transport.exits import mtr_exits
 from hk_transport.mtr import (
     light_rail,
     light_rail_next,
@@ -23,6 +24,7 @@ __all__ = [
     "mtr_airport_express_fare",
     "mtr_barrier_free",
     "mtr_bus",
+    "mtr_exits",
     "mtr_fare",
     "mtr_journey",
     "mtr_lines",
