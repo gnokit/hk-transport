@@ -1,0 +1,23 @@
+[project]
+name = "hk-transport"
+version = "0.1.0"
+description = "Tools for answering Hong Kong public-transport questions."
+requires-python = ">=3.13"
+dependencies = [
+    "requests>=2.34.2",
+]
+
+[build-system]
+requires = ["uv_build>=0.8.5,<0.9.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "live: calls the live MTR APIs and the monthly CSV",
+]
+addopts = "-m 'not live'"
