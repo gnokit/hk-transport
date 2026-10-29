@@ -59,6 +59,7 @@ Answer the person in Traditional Chinese.
 - If `data` is null, say `note`. Do not fill the gap.
 - Quote `note`. Do not rewrite it into a stronger claim.
 - A distance you compute from coordinates is straight-line, not walking time.
+- An accessibility answer says what the file says. A lift is 「閘外區域」(outside the paid area) or 「已付車費區域」(inside it), and the exit it serves. Do not upgrade that to "goes to the street" — the file never states a level. A lift marked 非港鐵管理 is not maintained by MTR but is still there; say so. An exit written 「A 和 D 出口」 covers both exits and cannot be split.
 - If no command covers the question, say this skill has no data for it.
 - If the script exits with an error, report that message. Do not guess a train or a fare.
 - Run a command once per question. Do not poll, and never loop on the traffic feeds.
