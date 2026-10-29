@@ -10,7 +10,7 @@
 
 2026-10-29：第一階段 1.1 至 1.10 已完成，地址查詢、重鐵出入口快照和運輸署交通消息已接入。代理入口是 [SKILL.md](../SKILL.md) 和 `mtr.sh`。`uv run pytest` 67 項通過。`uv run pytest -m live -o addopts=` 8 項通過，抽樣了路線 CSV、金鐘港島線下一班、元朗輕鐵下一班、K52、元州商場地址、金鐘站 C1 出口方格網，以及運輸署特別交通消息和特別交通及運輸安排。
 
-2026-10-30：第二階段的 10 條目標市民問題已寫入下面「第二階段 — 專營巴士」，未有程式。
+2026-10-30：第二階段的 10 條目標市民問題已寫入下面「第二階段 — 專營巴士」，未有程式。同日寫下實作任務：`bus_core.py`（一份資源一個函式）、`_graph.py`（共用尋路）、`bus.py`（十條問題十個函式）、`bus.sh`。路線搜尋交還多個方案，成本係（轉車次數、停站數），唔係時間。
 
 | 任務 | 指令 | 狀態 |
 |---|---|---|
@@ -227,10 +227,10 @@
 
 ### 未定的決定
 
-1. **第 1 條係唔係本階段的目標？** 路線搜尋要步行轉乘同「最佳路線」，係演算法問題，唔止數據問題。若果留待後一個階段，第 1 條要從這張表拿走，其餘九條的次序不變。
+1. ~~第 1 條係唔係本階段的目標？~~ **2026-10-30 已決定：在範圍內**，但唔交還單一「最佳路線」，而係幾個方案，見下面「第二階段實作任務」。
 2. **第 5、6、8、10 條的資料未核實。** 服務時間、車費、班次密度、低地台，都可能在現有 ETA 數據裡沒有，或只有部分。核實前不寫進範圍細則。
 3. **機場 A 線、口岸線、通宵 N 線**係唔係同一組問題，還是各自一組。
-4. **城巴同新大嶼山巴士的數據源未核實。** 九巴／龍運有運輸署的數據集；城巴、新大嶼山要另外確認。
+4. **城巴同新大嶼山巴士的數據源部分核實。** 2026-10-30 取樣：城巴的 route、route-stop、stop，新大嶼山的路線列表同站列表都通；兩者的 ETA 端點未核實。
 
 ### 開工前要做的核實
 
@@ -240,3 +240,113 @@
 - 站點座標覆蓋率，以及同 `address_lookup` 接駁時直線距離要點講。
 
 這一節只是範圍，未有程式。範圍細則同完成標準，在核實之後才寫。
+
+## 第二階段實作任務 — `bus.sh`
+
+設計同第一階段一樣：核心層一份數據資源一個函式，回答層一條市民問題一個函式，最後一個 `bus.sh`。第一階段已有的 `_result`、`_http`、`_values`、`als`、`notices` 沿用。
+
+### 已定的設計決定（2026-10-30）
+
+1. **路線搜尋交還多個方案，不是一個「最佳路線」。** 市民想比較，就列幾個，每個帶成本，由市民自己揀。不對外宣稱「最快」或「最好」。
+2. **成本是 `(轉車次數, 停站數)`，不是時間。** 車費有數據就逐個方案列出（未核實），冇就留空並說明。任何「較快」的講法都不會出現，除非日後有行車時間數據。
+3. **A 至 B 不是坐畢全程。** 同一路線、同一方向，`seq(A) < seq(B)` 就是一段可坐的區間；圖上以相鄰站做邊，路徑自然只取中間那一段。
+4. **跨營辦商站點身份本階段不做。** 九巴、城巴、新大嶼山的站號不通用，所以跨營辦商的轉車未能在圖上接上。這一點要在 note 明寫，不可以假裝找到一條跨公司路線。
+5. **日後把所有模式的節點圖連成一個統一旅程圖**（重鐵、巴士、輕鐵、渡輪）。本階段先把巴士的圖同尋路做成可重用的形狀，唔預先做跨模式。
+
+### T2.0 前置核實（未完成之前唔寫回答層）
+
+- [ ] 對九巴、城巴、新大嶼山各取一次活樣，記下實際欄位名
+- [ ] 確認車費、服務時間、班次、低地台**有冇欄位**；冇就係「答唔到」，唔係「遲啲補」
+- [ ] 新大嶼山路線詳情同 ETA 的正確參數
+- [ ] 城巴 ETA 端點
+- [ ] 一條路線同一方向的站序，是否已包含循環線的重複站
+
+### T2.1 `src/hk_transport/bus_core.py` — 一份數據資源一個函式
+
+只讀一份資源、交還整份表、不篩選、不組合、不解析地名。靜態部分用 `_http` 的 30 日快取，實時 ETA 不快取。
+
+| 函式 | 資源 | 交還 |
+|---|---|---|
+| `kmb_routes()` | 九巴／龍運 `/v1/transport/kmb/route/` | 全部路線 |
+| `kmb_route(route, bound, service_type)` | `/route/{route}/{bound}/{service_type}` | 一條線的資料 |
+| `kmb_stops()` | `/stop` | 全部巴士站 |
+| `kmb_stop(stop_id)` | `/stop/{id}` | 一個站 |
+| `kmb_route_stops(route, bound, service_type)` | `/route-stop/{route}/{bound}/{service_type}` | 一個方向的站序 |
+| `kmb_route_eta(route, service_type)` | `/route-eta/{route}/{service_type}` | 全線下一班 |
+| `kmb_stop_eta(stop_id, route, service_type)` | `/eta/{stop}/{route}/{service_type}` | 該站該線下一班 |
+| `ctb_routes()` | 城巴 `/v2/transport/citybus/route/CTB` | 全部路線 |
+| `ctb_route(route)` | `/route/CTB/{route}` | 一條線 |
+| `ctb_route_stops(route, direction)` | `/route-stop/CTB/{route}/{direction}` | 一個方向的站序 |
+| `ctb_stop(stop_id)` | `/stop/{id}` | 一個站 |
+| `ctb_eta(stop_id, route)` | `/eta/CTB/{stop}/{route}`（未核實） | 下一班 |
+| `nlb_routes()` | 新大嶼山 `route.php?action=list` | 全部路線 |
+| `nlb_stops(route_id)` | `stop.php?action=list&routeId=` | 一個方向的站序 |
+| `nlb_eta(route_id, stop_id)` | 待核實 | 下一班 |
+
+### T2.2 `src/hk_transport/_graph.py` — 共用的尋路層
+
+把 `mtr.py` 現有的 `_journey_path` 抽出來，做成兩種模式共用的一份。`mtr_journey` 的行為要完全不變，現有 67 個測試就是回歸網。
+
+| 函式 | 做什麼 |
+|---|---|
+| `platforms(...)` | 由站序建出節點：`(營辦商, 路線, 方向, 服務類型, 站)` |
+| `rides(...)` | 同一程的相鄰站，成本 `(0 轉車, 1 站)` |
+| `transfers(...)` | 同一個站、唔同程，成本 `(1 轉車, 0 站)` |
+| `journeys(starts, goals, k)` | 字典序成本下最多 `k` 條路徑，按 `(轉車, 站數)` 排，並去掉重複的路線組合 |
+
+`k=1` 時就是今日 `mtr_journey` 的行為；巴士用 `k=3`。
+
+### T2.3 `src/hk_transport/bus.py` — 一條市民問題一個函式
+
+冇 URL、冇快取，只組合核心層。答唔到就 `data: null` 加 note。
+
+| # | 市民問題 | 函式 | 組合 |
+|---|---|---|---|
+| 1 | 由我呢度去 X，搭咩巴士？ | `bus_journey(origin, destination, options=3)` | `als` + `_graph` + `bus_core` |
+| 2 | 呢條線經唔經 Y？ | `bus_route(route, place=None)` | `route` + `route_stops` |
+| 3 | 我附近有邊幾個站？ | `bus_stops_near(place, limit=5)` | `als` + `stops` |
+| 4 | 由 A 去 B 有冇一程過？ | `bus_direct(origin_stop, destination_stop)` | `route_stops`，只查同一程同一方向 |
+| 5 | 仲有冇車？尾班車幾點？ | `bus_service_hours(route)` | `route`（待核實） |
+| 6 | 幾多錢？ | `bus_fare(route)` | `route`（待核實） |
+| 7 | 下一班幾時到？ | `bus_eta(route=None, stop=None)` | `route_eta` / `stop_eta` |
+| 8 | 幾密？循環／特快／機場？ | `bus_frequency(route)` | `route` + 實時班距 |
+| 9 | 今日有冇改道／暫停？ | `bus_disruption(route)` | `notices.special_traffic_news` |
+| 10 | 輪椅上唔上到？ | `bus_accessibility(route)` | `route`（待核實） |
+
+`bus_journey` 交還 `options: [...]`，每個方案有 `legs`、`transfers`、`stops`、`fare`（冇就 `null`）同 `note`。方案之間唔排名，唔寫「最佳」。
+
+### T2.4 `bus.sh` — 入口
+
+同 `mtr.sh` 一樣的 `Command` / `Arg` 表、`argparse`、功能表、`help <command>`、stdout 係 JSON。
+
+| 子命令 | 參數 |
+|---|---|
+| `bus_route` | `route`，可選 `--place` |
+| `bus_stops_near` | `place` |
+| `bus_eta` | `--stop`、`--route`，最少一個 |
+| `bus_direct` | `origin`、`destination` |
+| `bus_fare` | `route` |
+| `bus_service_hours` | `route` |
+| `bus_frequency` | `route` |
+| `bus_disruption` | `--route`（可選） |
+| `bus_accessibility` | `route` |
+| `bus_journey` | `origin`、`destination`，可選 `--options` |
+
+### T2.5 測試
+
+- `tests/test_bus_core.py` — 解析 fixture、缺欄留空、錯誤帶資料集
+- `tests/test_bus.py` — 每個 use case 至少一條；冇資料時講 note；跨營辦商要講明接唔上
+- `tests/test_bus_sh.py` — 功能表、缺參數、envelope
+- `tests/test_graph.py` — 路徑排序、`k` 條、去重；同一組測試跑 `mtr_journey` 的舊案例
+- `live` 標記：九巴、城巴、新大嶼山各一個抽樣
+
+### T2.6 文件
+
+- `SKILL.md` — scope 加專營巴士，description 加觸發詞，加巴士的答法（多方案、成本唔係時間）
+- `AGENTS.md` — 加 `bus_core.py`、`bus.py`、`_graph.py`、`bus.sh`，加巴士 quirk
+- `README.md` / `README.zh.md` — 第二階段狀態、指令表
+- `TASKS.md` — 進度同完成標準
+
+### T2.7 完成標準
+
+十條問題每一條都答得到，或者明講答唔到；每個答案帶資料集、端點、數據時間；`bus_journey` 交還多個方案而唔排名；跨營辦商接唔上要照講；離線測試通過；三個營辦商各有一個 live 抽樣。

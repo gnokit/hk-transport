@@ -37,7 +37,7 @@ Phase 1 ships one entry script, `mtr.sh`. Every later phase adds a sibling scrip
 | Phase | Modes | Entry script | Status |
 |---|---|---|---|
 | 1 | MTR heavy rail, Airport Express, Disneyland Resort Line, Light Rail, feeder buses | `mtr.sh` | ✅ 14 commands |
-| 2 | Franchised buses | `bus.sh` | scope drafted |
+| 2 | Franchised buses | `bus.sh` | tasks written |
 | 3 | Green minibus, red minibus | `minibus.sh` | not started |
 | 4 | Tram, ferry | `tram.sh`, `ferry.sh` | not started |
 | 5 | Taxi, cross-boundary and high-speed rail | `taxi.sh`, `rail.sh` | not started |
@@ -52,7 +52,7 @@ Every phase ships the same five things:
 
 What phase 1 built stays shared rather than copied: the result envelope (`_result`), the 30-day fetch cache (`_http`), cell reading (`_values`), address lookup (`als`), and the two Transport Department feeds (`notices`).
 
-Two honest caveats: nothing in phases 3–5 exists yet, and the order above is a plan, not a commitment. Phase 2 is the exception — its ten target citizen questions are already written in [docs/TASKS.md](docs/TASKS.md), chosen from the questions people ask rather than from the datasets available. KMB and ferry code already lives in [`hkdata`](https://github.com/gnokit/hkdata); those phases decide whether to move it or wrap it.
+Two honest caveats: nothing in phases 3–5 exists yet, and the order above is a plan, not a commitment. Phase 2 is the exception — its ten target citizen questions and the implementation tasks are already written in [docs/TASKS.md](docs/TASKS.md), chosen from the questions people ask rather than from the datasets available. Its journey search returns several options with their cost, and lets the person choose; cost is transfers and stops, not minutes. KMB and ferry code already lives in [`hkdata`](https://github.com/gnokit/hkdata); those phases decide whether to move it or wrap it.
 
 ## Quick start
 
