@@ -2,7 +2,7 @@ from pathlib import Path
 
 from hk_transport import mtr
 from hk_transport._result import NO_ALERT
-from hk_transport.mtr import ALERT_CHECK_NEWS
+from hk_transport.mtr import ALERT_CHECK_NEWS, UNKNOWN_SERVICE
 
 
 def envelope(data, **overrides):
@@ -250,6 +250,7 @@ def test_light_rail_specials_are_flagged(monkeypatch):
         "light_rail_next_train",
         lambda station_id, with_special=1: envelope(
             {
+                "status": 1,
                 "platforms": [
                     {
                         "platform_id": 1,
@@ -514,3 +515,109 @@ def test_usecase_module_has_no_url_or_cache():
     assert "https://" not in text
     assert "_http" not in text
     assert ".cache" not in text
+
+
+def test_absent_fare_pair_claims_no_missing_columns(monkeypatch):
+    monkeypatch.setattr(mtr.mtr_core, "lines_and_stations", lambda: envelope(NETWORK))
+    monkeypatch.setattr(mtr.mtr_core, "domestic_fares", lambda: envelope([]))
+    result = mtr.mtr_fare("中環", "紅磡")
+    assert result["data"]["pairs"][0]["fares"] is None
+    assert "車費檔沒有這一對車站" in result["note"]
+    assert "OCT_ADT_FARE" not in result["note"]
+
+
+def test_missing_status_does_not_claim_no_special_arrangement(monkeypatch):
+    monkeypatch.setattr(mtr.mtr_core, "lines_and_stations", lambda: envelope(NETWORK))
+    monkeypatch.setattr(
+        mtr.mtr_core,
+        "next_train",
+        lambda line, station: envelope(
+            {"message": None, "url": None, "isdelay": None, "directions": []},
+            dataset_id="mtr-data2-nexttrain-data",
+            endpoint="https://example.test/next",
+            data_at="2026-10-29T10:00:00+08:00",
+            update_frequency="10s",
+        ),
+    )
+    result = mtr.mtr_next_train("港島線", "金鐘")
+    assert result["data"]["alert"] is None
+    assert result["note"] == UNKNOWN_SERVICE
+    assert result["note"] != NO_ALERT
+
+
+def one_way_board(direction, dest, times):
+    trains = [
+        {
+            "seq": str(index),
+            "dest": dest,
+            "platform": "1",
+            "time": text,
+            "ttnt": "1",
+            "valid": "Y",
+        }
+        for index, text in enumerate(times, start=1)
+    ]
+    other = "DOWN" if direction == "UP" else "UP"
+    return envelope(
+        {
+            "status": 1,
+            "message": "successful",
+            "url": None,
+            "isdelay": "N",
+            "curr_time": "2026-10-29 10:00:00",
+            "sys_time": "2026-10-29 10:00:00",
+            "directions": [
+                {"direction": direction, "trains": trains},
+                {"direction": other, "trains": []},
+            ],
+        },
+        dataset_id="mtr-data2-nexttrain-data",
+        endpoint=f"https://example.test/next?sta={direction}",
+        data_at="2026-10-29T10:00:00+08:00",
+        update_frequency="10s",
+    )
+
+
+def test_ride_estimate_never_pairs_the_two_directions(monkeypatch):
+    boards = {
+        ("ISL", "CHW"): one_way_board("UP", "CEN", ["2026-10-29 10:00:00", "2026-10-29 10:04:00"]),
+        ("ISL", "TIH"): one_way_board("DOWN", "CEN", ["2026-10-29 10:02:00", "2026-10-29 10:06:00"]),
+    }
+    monkeypatch.setattr(mtr.mtr_core, "lines_and_stations", lambda: envelope(NETWORK))
+    monkeypatch.setattr(mtr.mtr_core, "next_train", lambda line, station: boards[(line, station)])
+    result = mtr.mtr_ride_estimate("柴灣", "天后")
+    assert result["data"]["links"][0]["minutes"] is None
+    assert result["data"]["minutes"] is None
+
+
+def test_ride_estimate_has_no_upper_cap(monkeypatch):
+    boards = {
+        ("ISL", "CHW"): next_board("CHW", "CEN", ["2026-10-29 10:00:00", "2026-10-29 10:12:00", "2026-10-29 10:24:00"]),
+        ("ISL", "TIH"): next_board("TIH", "CEN", ["2026-10-29 10:09:00", "2026-10-29 10:21:00", "2026-10-29 10:33:00"]),
+    }
+    monkeypatch.setattr(mtr.mtr_core, "lines_and_stations", lambda: envelope(NETWORK))
+    monkeypatch.setattr(mtr.mtr_core, "next_train", lambda line, station: boards[(line, station)])
+    result = mtr.mtr_ride_estimate("柴灣", "天后")
+    assert result["data"]["links"][0]["minutes"] == 9
+    assert result["data"]["minutes"] == 9
+
+
+def test_light_rail_status_is_kept(monkeypatch):
+    monkeypatch.setattr(
+        mtr.mtr_core,
+        "light_rail_routes",
+        lambda: envelope([stop("610", "1", "YLL", "600", "元朗", "Yuen Long", 1)]),
+    )
+    monkeypatch.setattr(
+        mtr.mtr_core,
+        "light_rail_next_train",
+        lambda station_id, with_special=1: envelope(
+            {"status": 1, "platforms": []},
+            dataset_id="mtr-lrnt_data-light-rail-nexttrain-data",
+            endpoint="https://example.test/lrt",
+            data_at="2026-10-29T10:00:00+08:00",
+            update_frequency="10s",
+        ),
+    )
+    result = mtr.light_rail_next("元朗")
+    assert result["data"]["status"] == 1

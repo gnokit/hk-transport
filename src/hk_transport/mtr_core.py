@@ -57,10 +57,16 @@ def norm_id(value: str | None) -> str:
     return text
 
 
+# A cell holding only a dash is the publisher saying "no value", not a value.
+_NO_VALUE = {"-", "—", "–"}
+
+
 def _blank(value: str | None) -> str | None:
     if value is None:
         return None
     text = value.strip()
+    if text in _NO_VALUE:
+        return None
     return text or None
 
 

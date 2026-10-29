@@ -20,6 +20,7 @@ from hk_transport._result import NO_ALERT, compose
 ALERT_CHECK_NEWS = (
     "這一站這一線的回應有特別安排。全港特別交通消息要再查 special_traffic_news。"
 )
+UNKNOWN_SERVICE = "這次回應沒有車務狀態，不能說有沒有特別安排。"
 
 # Codes published in mtr_lines_and_stations.csv. The CSV has no line names.
 LINES = {
@@ -163,11 +164,10 @@ def _ambiguous(ids: list[str]) -> bool:
     return len(ids) > 1 and not set(ids) <= _ALIAS
 
 
-def _project(fares: dict | None, columns: tuple[str, ...]) -> tuple[dict, list[str]]:
-    source = fares or {}
-    missing = [column for column in columns if column not in source]
-    projected = {column: source.get(column) for column in columns}
-    for key, value in source.items():
+def _project(fares: dict, columns: tuple[str, ...]) -> tuple[dict, list[str]]:
+    missing = [column for column in columns if column not in fares]
+    projected = {column: fares.get(column) for column in columns}
+    for key, value in fares.items():
         if key not in projected:
             projected[key] = value
     return projected, missing
@@ -393,7 +393,6 @@ def mtr_journey(origin: str, destination: str) -> dict:
 
 
 _LINK_TOLERANCE = timedelta(seconds=30)
-_MAX_LINK_MINUTES = 8
 
 
 def _parse_train_time(value: str | None) -> datetime | None:
@@ -415,9 +414,15 @@ def _direction_terminus(rows: list[dict], line_code: str, direction: str) -> str
     return stops[-1]["code"]
 
 
-def _arrival_times(live: dict, dest_code: str) -> list[datetime]:
-    times = []
+def _arrival_times(live: dict, dest_code: str) -> dict[str, list[datetime]]:
+    """Arrival times toward one terminus, kept apart by direction.
+
+    The two directions are never pooled: a train going the other way cannot
+    show how long this direction takes.
+    """
+    grouped: dict[str, list[datetime]] = {}
     for direction in live["data"]["directions"]:
+        times = []
         for train in direction["trains"]:
             if train.get("dest") != dest_code:
                 continue
@@ -426,32 +431,53 @@ def _arrival_times(live: dict, dest_code: str) -> list[datetime]:
             parsed = _parse_train_time(train.get("time"))
             if parsed is not None:
                 times.append(parsed)
-    return sorted(set(times))
+        grouped[direction["direction"]] = sorted(set(times))
+    return grouped
 
 
-def _agreed_minutes(upstream: list[datetime], downstream: list[datetime]) -> int | None:
-    """Minutes one train takes from one station to the next.
+def _direction_minutes(starts: list[datetime], arrivals: list[datetime]) -> int | None:
+    """The minute most trains agree on within one direction, or None.
 
-    A zero-minute match is kept as a competing explanation, because two station
-    clocks can differ by a few seconds, but it is never the chosen ride time.
+    Trains are not identified across stations by this API, so a minute is only
+    accepted when at least two trains support it and no other minute has as
+    many. That is the whole guarantee; it is not a timetable.
     """
+    if not starts or not arrivals:
+        return None
+    span = int((max(arrivals) - min(starts)).total_seconds() // 60)
     scores: list[tuple[int, int]] = []
-    for offset in range(_MAX_LINK_MINUTES + 1):
+    for offset in range(span + 1):
         gap = timedelta(minutes=offset)
         hits = sum(
-            any(abs(item - (start + gap)) <= _LINK_TOLERANCE for item in downstream)
-            for start in upstream
+            any(abs(item - (start + gap)) <= _LINK_TOLERANCE for item in arrivals)
+            for start in starts
         )
         scores.append((hits, offset))
-    scores.sort(key=lambda item: (-item[0], item[1]))
     positive = [item for item in scores if item[1] > 0]
     if not positive:
         return None
-    best_hits, best_offset = positive[0]
-    others = [hits for hits, offset in scores if offset != best_offset]
-    second_hits = others[0] if others else 0
-    if best_hits >= 2 and best_hits > second_hits:
+    best_hits, best_offset = max(positive, key=lambda item: (item[0], -item[1]))
+    runner_up = max(
+        (hits for hits, offset in scores if offset != best_offset), default=0
+    )
+    if best_hits >= 2 and best_hits > runner_up:
         return best_offset
+    return None
+
+
+def _agreed_minutes(
+    upstream: dict[str, list[datetime]], downstream: dict[str, list[datetime]]
+) -> int | None:
+    """Minutes from one station to the next, judged one direction at a time.
+
+    A train going the other way is never evidence for this direction, and a
+    zero-minute match wins no argument: two station clocks can differ by a few
+    seconds, so zero is counted as a competitor but never returned.
+    """
+    for direction, starts in upstream.items():
+        minute = _direction_minutes(starts, downstream.get(direction) or [])
+        if minute is not None:
+            return minute
     return None
 
 
@@ -533,14 +559,18 @@ def _fare_pairs(
     for origin_id in origin_ids:
         for dest_id in dest_ids:
             fare = index.get((origin_id, dest_id))
-            projected, absent = _project(None if fare is None else fare["fares"], columns)
-            missing.extend(column for column in absent if column not in missing)
-            any_row = any_row or fare is not None
+            if fare is None:
+                # No row at all: the pair is absent. Do not claim its columns are absent.
+                projected = None
+            else:
+                projected, absent = _project(fare["fares"], columns)
+                missing.extend(column for column in absent if column not in missing)
+                any_row = True
             pairs.append(
                 {
                     "from": _view(reps[origin_id]),
                     "to": _view(reps[dest_id]),
-                    "fares": projected if fare is not None else None,
+                    "fares": projected,
                 }
             )
     return pairs, missing, any_row
@@ -577,16 +607,22 @@ def mtr_fare(origin: str, destination: str) -> dict:
     return compose([lines, fares], {"pairs": pairs}, note=note)
 
 
-def _normal_service(payload: dict) -> bool:
+def _service_state(payload: dict) -> str:
+    """`normal`, `alert`, or `unknown` from the API's own service fields.
+
+    A missing status is not evidence of normal service, so it is `unknown`
+    unless another field already reports a problem.
+    """
     message = (payload.get("message") or "").casefold()
     status = payload.get("status")
     delayed = (payload.get("isdelay") or "").upper() == "Y"
-    return (
-        str(status) in {"1", "None"}
-        and message in {"", "successful", "success"}
-        and not payload.get("url")
-        and not delayed
-    )
+    if delayed or payload.get("url") or message not in {"", "successful", "success"}:
+        return "alert"
+    if status in (1, "1"):
+        return "normal"
+    if status is None:
+        return "unknown"
+    return "alert"
 
 
 def _station_by_code(rows: list[dict], code: str | None) -> dict:
@@ -649,12 +685,21 @@ def mtr_next_train(line: str, station: str) -> dict:
             )
         directions.append({"direction": direction["direction"], "trains": trains})
     zh, en = _line_names(line_code)
-    alert = None if _normal_service(live["data"]) else {
-        "status": live["data"]["status"],
-        "message": live["data"]["message"],
-        "url": live["data"]["url"],
-        "isdelay": live["data"]["isdelay"],
-    }
+    state = _service_state(live["data"])
+    alert = None
+    if state == "alert":
+        alert = {
+            "status": live["data"]["status"],
+            "message": live["data"]["message"],
+            "url": live["data"]["url"],
+            "isdelay": live["data"]["isdelay"],
+        }
+    if state == "alert":
+        note = ALERT_CHECK_NEWS
+    elif state == "normal":
+        note = NO_ALERT
+    else:
+        note = UNKNOWN_SERVICE
     return compose(
         [lines, live],
         {
@@ -665,7 +710,7 @@ def mtr_next_train(line: str, station: str) -> dict:
             "directions": directions,
             "alert": alert,
         },
-        note=ALERT_CHECK_NEWS if alert else NO_ALERT,
+        note=note,
     )
 
 
@@ -767,6 +812,7 @@ def light_rail_next(station: str) -> dict:
         [routes, live],
         {
             "station": _view(_representatives(routes["data"])[ids[0]]),
+            "status": live["data"].get("status"),
             "platforms": live["data"]["platforms"],
         },
     )

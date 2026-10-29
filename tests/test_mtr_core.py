@@ -103,6 +103,18 @@ def test_domestic_fares_keep_only_columns_in_the_file(monkeypatch):
     assert row["fares"] == {"OCT_ADT_FARE": "10.4", "SINGLE_ADT_FARE": "12"}
 
 
+def test_dash_cell_is_read_as_no_value(monkeypatch):
+    text = FARES_CSV.replace("10.4,12", "10.4,-")
+    monkeypatch.setattr(
+        mtr_core,
+        "fetch_text",
+        lambda url, *, dataset_id: (text, "2026-10-01T00:00:00+08:00"),
+    )
+    row = mtr_core.domestic_fares()["data"][0]
+    assert row["fares"]["SINGLE_ADT_FARE"] is None
+    assert row["fares"]["OCT_ADT_FARE"] == "10.4"
+
+
 def test_live_next_train_is_not_written_to_the_cache(monkeypatch, tmp_path):
     def fake_get(url, timeout):
         class Response:
