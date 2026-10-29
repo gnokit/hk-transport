@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from hk_transport import mtr
-from hk_transport._result import NO_ALERT
+from hk_transport._result import NO_ALERT, compose
 from hk_transport.mtr import ALERT_CHECK_NEWS, UNKNOWN_SERVICE
 
 
@@ -600,6 +600,27 @@ def test_ride_estimate_has_no_upper_cap(monkeypatch):
     result = mtr.mtr_ride_estimate("柴灣", "天后")
     assert result["data"]["links"][0]["minutes"] == 9
     assert result["data"]["minutes"] == 9
+
+
+def test_compose_with_no_sources_invents_nothing():
+    result = compose([], None, note="要給路線，或同時給起點同終點。")
+    assert result["dataset_id"] is None
+    assert result["endpoint"] is None
+    assert result["retrieved_at"] is None
+    assert result["update_frequency"] is None
+    assert result["data"] is None
+
+
+def test_compose_keeps_a_yearly_source_labelled_yearly():
+    yearly = envelope(
+        [],
+        dataset_id="hk-landsd-openmap-development-location-search-api",
+        endpoint="https://example.test/exits",
+        update_frequency="yearly",
+    )
+    result = compose([yearly], [{"exit": "A"}])
+    assert result["update_frequency"] == "yearly"
+    assert result["data_at"] is None
 
 
 def test_light_rail_status_is_kept(monkeypatch):

@@ -85,3 +85,11 @@ def test_mtr_exits_prints_the_envelope():
     assert payload["data"]
     assert payload["data"][0]["latitude"]
     assert payload["data"][0]["longitude"]
+
+
+def test_mtr_exits_can_target_one_station():
+    result = _run("mtr_exits", "--station", "金鐘")
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert {row["station_zh"] for row in payload["data"]} == {"金鐘"}
+    assert "只列出「金鐘」" in payload["note"]

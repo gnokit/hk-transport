@@ -45,7 +45,19 @@ def _stale(retrieved_at: str) -> bool:
     return datetime.now(HKT) - fetched >= _YEAR
 
 
-def mtr_exits() -> dict:
+def _matches_station(row: dict, query: str) -> bool:
+    """One snapshot row belongs to a station asked for by name, code, or id."""
+    folded = query.casefold()
+    if row.get("station_zh") == query:
+        return True
+    if (row.get("station_en") or "").casefold() == folded:
+        return True
+    if folded.upper() in {str(code).upper() for code in row.get("station_codes") or []}:
+        return True
+    return query in {str(item) for item in row.get("station_ids") or []}
+
+
+def mtr_exits(station: str | None = None) -> dict:
     """交還重鐵站出入口座標。
 
     資料集 `hk-landsd-openmap-development-location-search-api`。
@@ -60,12 +72,13 @@ def mtr_exits() -> dict:
     出入口幾乎不變。這份快照約一年內重用，查詢時不重新下載，也不寫入 `.cache/`。
     超過一年仍交還同一份，並在 note 說明。
 
-    用法：`mtr_exits()`。
+    用法：`mtr_exits()` 交還全部；`mtr_exits("金鐘")` 只交還一個站。
     市民會問：這個站有哪些出口？出口的座標是多少？
 
     這不是港鐵公布的出口名冊。輕鐵站不在這份表。沒有出口編號的出入口，`exit` 留空。
     青衣、九龍、香港在機場快線和東涌線各有一個車站編號，出入口是同一組，`station_ids` 兩個都列。
     """
+    station = (station or "").strip() or None
     snapshot = _load()
     retrieved_at = snapshot.get("retrieved_at")
     if not isinstance(retrieved_at, str) or not retrieved_at:
@@ -82,12 +95,18 @@ def mtr_exits() -> dict:
         note += "這份快照已超過一年。"
     if missing:
         note += "這次沒有進出口的車站：" + "、".join(str(name) for name in missing) + "。"
+    rows = snapshot["exits"]
+    if station is not None:
+        rows = [row for row in rows if _matches_station(row, station)]
+        note += f"只列出「{station}」的出入口。"
+        if not rows:
+            note += f"快照沒有這個站的出入口：{station}。"
     return envelope(
         dataset_id=[DATASET_ID, TRANSFORM_DATASET_ID],
         endpoint=[SEARCH_ENDPOINT, TRANSFORM_ENDPOINT],
         retrieved_at=retrieved_at,
         data_at=None,
         update_frequency="yearly",
-        data=snapshot["exits"],
+        data=rows or None,
         note=note,
     )

@@ -380,7 +380,8 @@ def _journey_query(origin: str, destination: str) -> tuple[dict, dict | None, st
 def mtr_journey(origin: str, destination: str) -> dict:
     """兩站之間的一條路徑：乘哪條線、在哪裡轉車、中間停哪些站。
 
-    提供轉乘路徑。只用 `lines_and_stations`。沒有行車分鐘。
+    提供轉乘路徑。資料集 `mtr-data-routes-fares-barrier-free-facilities`，
+    端點由 `lines_and_stations` 帶出。沒有行車分鐘。
 
     用法：`mtr_journey("柴灣", "荃灣")`。
     市民會問：由柴灣去荃灣，乘哪條線，在哪一站轉車？
@@ -484,7 +485,8 @@ def _agreed_minutes(
 def mtr_ride_estimate(origin: str, destination: str) -> dict:
     """用實時到站時間估算兩站之間的車上分鐘。
 
-    路徑來自 `lines_and_stations`。每一段呼叫 `next_train`，只看開往該方向
+    路徑來自 `lines_and_stations`（`mtr-data-routes-fares-barrier-free-facilities`）。
+    每一段呼叫 `next_train`（`mtr-data2-nexttrain-data`），只看開往該方向
     終點站的班次。同一班車在下一站的到站時間減去這一站的到站時間，就是這一段。
     至少兩班車同意同一個分鐘，而且沒有另一個分鐘同樣多人同意，才採用。
     任何一段對不齊，全程分鐘留空。
@@ -579,7 +581,9 @@ def _fare_pairs(
 def mtr_fare(origin: str, destination: str) -> dict:
     """兩個重鐵站之間的車費。車費跟路徑無關。
 
-    提供八達通同單程票各欄。中文站名經 `lines_and_stations` 對上車站編號，
+    提供八達通同單程票各欄。資料集
+    `mtr-data-routes-fares-barrier-free-facilities`，端點由 `lines_and_stations`
+    同 `domestic_fares` 帶出。中文站名經 `lines_and_stations` 對上車站編號，
     再查 `domestic_fares`。車費檔裡的站名是英文。
 
     用法：`mtr_fare("中環", "紅磡")`。
@@ -717,7 +721,8 @@ def mtr_next_train(line: str, station: str) -> dict:
 def mtr_airport_express_fare(origin: str, destination: str) -> dict:
     """機場快線成人同小童車費。下一班用 `mtr_next_train`。
 
-    只用 `airport_express_fares`。不會套用重鐵的長者、學生或樂悠咭車費。
+    資料集 `mtr-data-routes-fares-barrier-free-facilities`，端點由
+    `airport_express_fares` 帶出。只用這一張表。不會套用重鐵的長者、學生或樂悠咭車費。
 
     用法：`mtr_airport_express_fare("香港", "機場")`。
     市民會問：機場快線由香港站去機場，成人同小童幾多錢？
@@ -746,6 +751,8 @@ def mtr_airport_express_fare(origin: str, destination: str) -> dict:
 def mtr_barrier_free(station: str) -> dict:
     """一個站有哪些無障礙設施、在哪個出口。
 
+    資料集 `mtr-data-routes-fares-barrier-free-facilities`，端點由
+    `barrier_free_facilities` 同 `barrier_free_categories` 帶出。
     設施鍵由 `barrier_free_categories` 譯成名稱。只交還標成有的設施。
     出口座標是空的就留空。
 
@@ -790,8 +797,8 @@ def light_rail_next(station: str) -> dict:
     """輕鐵這一站即將開出的班次，包括特別班。
 
     站名經 `light_rail_routes` 對上 stop id，再呼叫 `light_rail_next_train`
-    （`with_special=1`）。資料集 `mtr-lrnt_data-light-rail-nexttrain-data`。
-    數據時間用 API 的 `system_time`。
+    （`with_special=1`）。資料集 `mtr-lrnt_data-light-rail-nexttrain-data`，
+    端點由 `light_rail_next_train` 帶出。數據時間用 API 的 `system_time`。
 
     用法：`light_rail_next("元朗")`。元朗的 stop id 是 600。
     市民會問：下一班是幾號、去哪、還有幾多分鐘？是不是特別班？
@@ -825,22 +832,15 @@ def light_rail(
 ) -> dict:
     """輕鐵某線一個方向的車站順序，以及兩站之間的車費。
 
-    路線用 `light_rail_routes`，車費用 `light_rail_fares`。可以只問路線、
+    資料集 `mtr-data-routes-fares-barrier-free-facilities`，端點由
+    `light_rail_routes` 同 `light_rail_fares` 帶出。可以只問路線、
     只問車費，或兩個一起問。
 
     用法：`light_rail(line="610")`，`light_rail(origin="屯門", destination="元朗")`。
     市民會問：610 線停哪些站？由屯門去元朗幾多錢？
     """
     if line is None and not (origin and destination):
-        return {
-            "dataset_id": None,
-            "endpoint": None,
-            "retrieved_at": None,
-            "data_at": None,
-            "update_frequency": None,
-            "data": None,
-            "note": "要給路線，或同時給起點同終點。",
-        }
+        return compose([], None, note="要給路線，或同時給起點同終點。")
     routes = mtr_core.light_rail_routes()
     sources = [routes]
     payload: dict = {}
@@ -887,9 +887,10 @@ def _match_routes(query: str, routes: list[dict]) -> list[dict]:
 def mtr_bus(route: str) -> dict:
     """港鐵巴士的停站順序、以路線計的車費，以及各站下一班。
 
-    靜態資料用 `bus_routes`、`bus_stops`、`bus_fares`。到站時間用
-    `bus_schedule`，每個路線只查一次。車費不是分段車費。
-    預定班次同實時位置分開保留。
+    靜態資料集 `mtr-data-routes-fares-barrier-free-facilities`，端點由
+    `bus_routes`、`bus_stops`、`bus_fares` 帶出；到站資料集
+    `mtr-mtr_bus-mtr-bus-eta-data`，端點由 `bus_schedule` 帶出，每個路線只查一次。
+    車費不是分段車費。預定班次同實時位置分開保留。
 
     用法：`mtr_bus("K52")`。
     市民會問：K52 停哪、車費幾多、這一站下一班幾時到？

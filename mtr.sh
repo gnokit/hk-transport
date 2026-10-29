@@ -258,11 +258,20 @@ def _commands() -> tuple[Command, ...]:
             "Heavy-rail exit coordinates",
             (
                 "Coordinates of heavy-rail station exits. Latitude and longitude are already converted.",
+                "With no arguments this returns every station. Pass --station for one station.",
                 "This is a snapshot of about one year. Do not download it again.",
                 "If note says the snapshot is older than a year, say so and still use the coordinates.",
                 "This command does not pick the nearest station. A distance you compute is straight-line, not walking time.",
             ),
-            lambda ns: mtr_exits(),
+            lambda ns: mtr_exits(_text(ns.station)),
+            (
+                Arg(
+                    "station",
+                    "Station name, in Chinese or English. Omit to include every station.",
+                    flag="--station",
+                    metavar="station",
+                ),
+            ),
         ),
         Command(
             "special_traffic_news",

@@ -71,6 +71,20 @@ def test_lo_wu_uses_the_published_exit_word():
     assert row["name_en"] == "MTR Lo Wu Station-A Exit"
 
 
+def test_one_station_can_be_asked_for_by_name_or_code():
+    by_name = mtr_exits("金鐘")
+    assert {row["station_zh"] for row in by_name["data"]} == {"金鐘"}
+    assert "只列出「金鐘」" in by_name["note"]
+    by_code = mtr_exits("ADM")
+    assert {row["station_zh"] for row in by_code["data"]} == {"金鐘"}
+
+
+def test_unknown_station_does_not_invent_exits():
+    result = mtr_exits("不存在")
+    assert result["data"] is None
+    assert "快照沒有這個站的出入口" in result["note"]
+
+
 def test_shared_stations_list_both_line_ids():
     rows = mtr_exits()["data"]
 

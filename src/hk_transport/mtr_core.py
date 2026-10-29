@@ -268,12 +268,22 @@ def _table(url: str, parse) -> dict:
 
 
 def lines_and_stations() -> dict:
-    """Heavy-rail lines and stations, including Airport Express and Disneyland."""
+    """Heavy-rail lines and stations, including Airport Express and Disneyland.
+
+    Dataset `mtr-data-routes-fares-barrier-free-facilities`, endpoint
+    `https://opendata.mtr.com.hk/data/mtr_lines_and_stations.csv`.
+    Answers: which stations a line has, and which lines serve a station.
+    """
     return _table(LINES_URL, _parse_lines)
 
 
 def domestic_fares() -> dict:
-    """Station-to-station heavy-rail fares. Station names in this file are English."""
+    """Station-to-station heavy-rail fares. Station names in this file are English.
+
+    Dataset `mtr-data-routes-fares-barrier-free-facilities`, endpoint
+    `https://opendata.mtr.com.hk/data/mtr_lines_fares.csv`.
+    Answers: what one adult, child, student, elderly, JoyYou, or PWD trip costs.
+    """
     return _table(
         DOMESTIC_FARES_URL,
         lambda text: _parse_fare_table(
@@ -287,7 +297,12 @@ def domestic_fares() -> dict:
 
 
 def airport_express_fares() -> dict:
-    """Airport Express fares. Adult and child columns only."""
+    """Airport Express fares. Adult and child columns only.
+
+    Dataset `mtr-data-routes-fares-barrier-free-facilities`, endpoint
+    `https://opendata.mtr.com.hk/data/airport_express_fares.csv`.
+    Answers: what Hong Kong, Kowloon, or Tsing Yi to the Airport costs.
+    """
     return _table(
         AEL_FARES_URL,
         lambda text: _parse_fare_table(
@@ -301,22 +316,43 @@ def airport_express_fares() -> dict:
 
 
 def barrier_free_categories() -> dict:
-    """Names for the facility keys used in `barrier_free_facilities`."""
+    """Names for the facility keys used in `barrier_free_facilities`.
+
+    Dataset `mtr-data-routes-fares-barrier-free-facilities`, endpoint
+    `https://opendata.mtr.com.hk/data/barrier_free_facility_category.csv`.
+    Answers: what a facility key means in Chinese and English.
+    """
     return _table(BARRIER_CATEGORIES_URL, _parse_categories)
 
 
 def barrier_free_facilities() -> dict:
-    """Per-station barrier-free flags. `present` is true only when the file says Y."""
+    """Per-station barrier-free flags. `present` is true only when the file says Y.
+
+    Dataset `mtr-data-routes-fares-barrier-free-facilities`, endpoint
+    `https://opendata.mtr.com.hk/data/barrier_free_facilities.csv`.
+    Answers: which facilities a station has, and at which exit. The exit
+    coordinate column in this file is usually empty.
+    """
     return _table(BARRIER_FACILITIES_URL, _parse_facilities)
 
 
 def light_rail_routes() -> dict:
-    """Light-rail routes and stops, one direction at a time."""
+    """Light-rail routes and stops, one direction at a time.
+
+    Dataset `mtr-data-routes-fares-barrier-free-facilities`, endpoint
+    `https://opendata.mtr.com.hk/data/light_rail_routes_and_stops.csv`.
+    Answers: which stops a Light Rail route calls at, in order.
+    """
     return _table(LR_ROUTES_URL, _parse_lr_routes)
 
 
 def light_rail_fares() -> dict:
-    """Light-rail station-to-station fares. This file has ids and no station names."""
+    """Light-rail station-to-station fares. This file has ids and no station names.
+
+    Dataset `mtr-data-routes-fares-barrier-free-facilities`, endpoint
+    `https://opendata.mtr.com.hk/data/light_rail_fares.csv`.
+    Answers: what one Light Rail trip between two stops costs.
+    """
     return _table(
         LR_FARES_URL,
         lambda text: _parse_fare_table(
@@ -330,17 +366,32 @@ def light_rail_fares() -> dict:
 
 
 def bus_routes() -> dict:
-    """MTR bus and feeder-bus routes."""
+    """MTR bus and feeder-bus routes.
+
+    Dataset `mtr-data-routes-fares-barrier-free-facilities`, endpoint
+    `https://opendata.mtr.com.hk/data/mtr_bus_routes.csv`.
+    Answers: which feeder routes exist, and their Chinese and English names.
+    """
     return _table(BUS_ROUTES_URL, _parse_bus_routes)
 
 
 def bus_stops() -> dict:
-    """Stops on those routes, with coordinates."""
+    """Stops on those routes, with coordinates.
+
+    Dataset `mtr-data-routes-fares-barrier-free-facilities`, endpoint
+    `https://opendata.mtr.com.hk/data/mtr_bus_stops.csv`.
+    Answers: which stops a feeder route calls at, in order, and where they are.
+    """
     return _table(BUS_STOPS_URL, _parse_bus_stops)
 
 
 def bus_fares() -> dict:
-    """One fare row per route, not per stop."""
+    """One fare row per route, not per stop.
+
+    Dataset `mtr-data-routes-fares-barrier-free-facilities`, endpoint
+    `https://opendata.mtr.com.hk/data/mtr_bus_fares.csv`.
+    Answers: what a feeder-bus trip costs. The fare is per route.
+    """
     return _table(BUS_FARES_URL, _parse_bus_fares)
 
 

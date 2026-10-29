@@ -59,7 +59,11 @@ def envelope(
 
 
 def compose(sources: list[dict], data: object, note: str | None = None) -> dict:
-    """One envelope over core results. Each source keeps its own timestamp."""
+    """One envelope over core results. Each source keeps its own timestamp.
+
+    With no sources the envelope keeps every field null: the caller had nothing
+    to look at, and saying "monthly" would invent a fact.
+    """
     dataset_ids: list[str] = []
     endpoints: list[str] = []
     retrieved: list[str] = []
@@ -77,21 +81,27 @@ def compose(sources: list[dict], data: object, note: str | None = None) -> dict:
         else:
             retrieved.append(retrieved_at)
     live = [source for source in sources if source["update_frequency"] == "10s"]
-    if not live:
-        data_at: str | None | list[str | None] = None
-        frequency = "monthly"
-    elif len(live) == 1:
-        data_at = live[0]["data_at"]
-        frequency = "10s"
+    if live:
+        frequency: str | list[str] = "10s"
+        data_at: str | None | list[str | None] = (
+            live[0]["data_at"]
+            if len(live) == 1
+            else [source["data_at"] for source in live]
+        )
     else:
-        data_at = [source["data_at"] for source in live]
-        frequency = "10s"
+        data_at = None
+        # A file that is yearly or realtime must not be relabelled monthly.
+        frequencies: list[str] = []
+        for source in sources:
+            if source["update_frequency"] not in frequencies:
+                frequencies.append(source["update_frequency"])
+        frequency = frequencies[0] if len(frequencies) == 1 else frequencies
     return {
-        "dataset_id": dataset_ids[0] if len(dataset_ids) == 1 else dataset_ids,
-        "endpoint": endpoints[0] if len(endpoints) == 1 else endpoints,
-        "retrieved_at": retrieved[0] if len(set(retrieved)) == 1 else retrieved,
+        "dataset_id": dataset_ids[0] if len(dataset_ids) == 1 else (dataset_ids or None),
+        "endpoint": endpoints[0] if len(endpoints) == 1 else (endpoints or None),
+        "retrieved_at": retrieved[0] if len(set(retrieved)) == 1 else (retrieved or None),
         "data_at": data_at,
-        "update_frequency": frequency,
+        "update_frequency": frequency or None,
         "sources": [
             {
                 "dataset_id": source["dataset_id"],
