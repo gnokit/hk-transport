@@ -13,6 +13,7 @@ Skill 本身不跟市民對話，也不hey替市民選定行程。
 工具分兩層：
 
 - `hk_transport.mtr_core` 每個函式對應一份港鐵數據。每月 CSV 下載後放在技能目錄的 `.cache/`，30 日內重用。這個目錄已寫入 `.gitignore`。三個實時 API 在查詢當下才呼叫，不進快取。
+- `address_lookup` 查地政總署地址同座標。它是位置問題的核心，不快取，也不自己挑選最近的車站。
 - `hk_transport` 的函式回答下面 10 條問題，另外 `mtr_ride_estimate` 估算車上分鐘。它們只呼叫核心層，自己不下載。
 
 ```python
