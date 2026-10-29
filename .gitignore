@@ -9,5 +9,11 @@ wheels/
 # Virtual environments
 .venv
 
+# Local environment
+.env
+
+# macOS
+.DS_Store
+
 # Monthly MTR CSV cache
 .cache/

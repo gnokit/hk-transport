@@ -2,10 +2,18 @@
 name = "hk-transport"
 version = "0.1.0"
 description = "Tools for answering Hong Kong public-transport questions."
+readme = "README.md"
 requires-python = ">=3.13"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "gnokit" }]
 dependencies = [
     "requests>=2.34.2",
 ]
+
+[project.urls]
+Homepage = "https://github.com/gnokit/hk-transport"
+Issues = "https://github.com/gnokit/hk-transport/issues"
 
 [build-system]
 requires = ["uv_build>=0.8.5,<0.9.0"]

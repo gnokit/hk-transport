@@ -27,7 +27,7 @@
 ## 快速開始
 
 ```bash
-git clone <this repo> && cd hk-transport
+git clone https://github.com/gnokit/hk-transport.git && cd hk-transport
 bash mtr.sh                                          # 功能表：每個命令一行
 bash mtr.sh help mtr_next_train                      # 該命令的參數
 bash mtr.sh mtr_next_train 港島線 金鐘                # 問一條問題
@@ -125,7 +125,7 @@ graph LR
 
 數據來自 [DATA.GOV.HK](https://data.gov.hk)：港鐵 4 個數據集，加地政總署的地址查詢、地理位置搜尋同坐標轉換，以及運輸署的特別交通消息同特別交通及運輸安排。使用時受其[條款](https://data.gov.hk/tc/terms-and-conditions)約束。
 
-本倉庫的程式以 [MIT 授權](LICENSE) 發布。
+本倉庫的程式以 [MIT 授權](LICENSE) 發布。這個授權只涵蓋程式：`src/hk_transport/data/mtr_exits.json` 是由地政總署數據衍生的快照，仍然受 data.gov.hk 條款約束——見 [NOTICE](NOTICE)。
 
 ## 開發
 

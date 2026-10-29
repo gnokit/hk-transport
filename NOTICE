@@ -1,0 +1,17 @@
+hk-transport (港交寶)
+=====================
+
+The MIT licence in LICENSE covers this repository's source code.
+
+Bundled data
+------------
+
+`src/hk_transport/data/mtr_exits.json` is a snapshot derived from the Lands
+Department "Location Search" API and "Coordinates Transformation" API,
+published on data.gov.hk.
+
+Fares, routes, station and facility tables, and the live MTR feeds are read
+from data.gov.hk at run time. They are not redistributed in this repository.
+
+Use of that data is subject to the data.gov.hk terms and conditions:
+https://data.gov.hk/tc/terms-and-conditions

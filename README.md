@@ -27,7 +27,7 @@ It is the transport-focused sibling of [`hkdata`](https://github.com/gnokit/hkda
 ## Quick start
 
 ```bash
-git clone <this repo> && cd hk-transport
+git clone https://github.com/gnokit/hk-transport.git && cd hk-transport
 bash mtr.sh                                          # the manual: one line per command
 bash mtr.sh help mtr_next_train                      # that command's arguments
 bash mtr.sh mtr_next_train 港島線 金鐘                # ask a question
@@ -125,7 +125,7 @@ Scope is specified in [docs/TASKS.md](docs/TASKS.md); agent-facing instructions 
 
 Data comes from [DATA.GOV.HK](https://data.gov.hk): four MTR datasets, plus the Lands Department address lookup, location search and coordinate transform, and the Transport Department's traffic news and advance arrangements. Use is subject to the [data.gov.hk terms](https://data.gov.hk/tc/terms-and-conditions).
 
-This repository's own code is [MIT licensed](LICENSE).
+This repository's own code is [MIT licensed](LICENSE). That licence covers the code only: the bundled exit snapshot in `src/hk_transport/data/mtr_exits.json` is derived from Lands Department data and stays subject to the data.gov.hk terms — see [NOTICE](NOTICE).
 
 ## Development
 
