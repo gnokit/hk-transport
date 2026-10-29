@@ -12,7 +12,7 @@ compatibility: Requires uv and Python >=3.13. $SKILL_DIR is the directory that c
 
 # hk-transport（港交寶）
 
-Answer a Hong Kong MTR question by running `mtr.sh`. Do not write a fetcher. Do not invent a figure the tool did not return.
+Answer a Hong Kong MTR question by running `mtr.sh`. This skill is phase 1 of hk-transport: it covers MTR and its feeders. Do not write a fetcher. Do not invent a figure the command did not return.
 
 **Scope: MTR heavy rail, Airport Express, Disneyland Resort Line, Light Rail, MTR feeder buses, address lookup, the heavy-rail exit snapshot, and the two Transport Department feeds — live special-traffic news and advance special-traffic arrangements.** Franchised bus, green minibus, tram, ferry, taxi, red minibus, and cross-boundary rail are out of scope.
 
@@ -33,7 +33,7 @@ If you do not know a station, stop, or line name, run `mtr_lines` first. `mtr_li
 
 ## When a name matches more than one station
 
-A few names are two stations: 香港 has an Airport Express id and a Tung Chung line id. A tool may answer with `matches` (or `origin_matches` and `destination_matches`), with one entry per matching station, or with one fare pair per station, and says so in `note`.
+A few names are two stations: 香港 has an Airport Express id and a Tung Chung line id. A command may answer with `matches` (or `origin_matches` and `destination_matches`), with one entry per matching station, or with one fare pair per station, and says so in `note`.
 
 - Do not choose one yourself. Say which stations matched, and ask which one the person means.
 - Or run the command again with the station id or code, which settles it.
