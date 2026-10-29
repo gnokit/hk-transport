@@ -10,6 +10,7 @@ from hk_transport.mtr import (
     mtr_journey,
     mtr_lines,
     mtr_next_train,
+    mtr_ride_estimate,
 )
 
 __version__ = "0.1.0"
@@ -24,4 +25,5 @@ __all__ = [
     "mtr_journey",
     "mtr_lines",
     "mtr_next_train",
+    "mtr_ride_estimate",
 ]

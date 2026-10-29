@@ -400,6 +400,86 @@ def test_missing_station_does_not_invent_one(monkeypatch):
     assert "不存在" in result["note"]
 
 
+def next_board(station, dest, times):
+    trains = [
+        {
+            "seq": str(index),
+            "dest": dest,
+            "platform": "1",
+            "time": text,
+            "ttnt": "1",
+            "valid": "Y",
+        }
+        for index, text in enumerate(times, start=1)
+    ]
+    return envelope(
+        {
+            "status": 1,
+            "message": "successful",
+            "url": None,
+            "isdelay": "N",
+            "curr_time": "2026-10-29 10:10:00",
+            "sys_time": "2026-10-29 10:10:00",
+            "directions": [
+                {"direction": "UP", "trains": trains},
+                {"direction": "DOWN", "trains": []},
+            ],
+        },
+        dataset_id="mtr-data2-nexttrain-data",
+        endpoint=f"https://example.test/next?sta={station}",
+        data_at="2026-10-29T10:10:00+08:00",
+        update_frequency="10s",
+    )
+
+
+def test_ride_estimate_sums_links_that_agree(monkeypatch):
+    boards = {
+        ("ISL", "CHW"): next_board("CHW", "CEN", ["2026-10-29 10:00:00", "2026-10-29 10:04:00", "2026-10-29 10:08:00"]),
+        ("ISL", "TIH"): next_board("TIH", "CEN", ["2026-10-29 10:02:00", "2026-10-29 10:06:00", "2026-10-29 10:10:00"]),
+        ("ISL", "ADM"): next_board("ADM", "CEN", ["2026-10-29 10:04:00", "2026-10-29 10:08:00", "2026-10-29 10:12:00"]),
+        ("TWL", "ADM"): next_board("ADM", "TSW", ["2026-10-29 10:06:00", "2026-10-29 10:10:00", "2026-10-29 10:14:00"]),
+        ("TWL", "TST"): next_board("TST", "TSW", ["2026-10-29 10:08:00", "2026-10-29 10:12:00", "2026-10-29 10:16:00"]),
+        ("TWL", "TSW"): next_board("TSW", "TSW", ["2026-10-29 10:10:00", "2026-10-29 10:14:00", "2026-10-29 10:18:00"]),
+    }
+    monkeypatch.setattr(mtr.mtr_core, "lines_and_stations", lambda: envelope(NETWORK))
+    monkeypatch.setattr(mtr.mtr_core, "next_train", lambda line, station: boards[(line, station)])
+    result = mtr.mtr_ride_estimate("柴灣", "荃灣")
+    assert result["data"]["minutes"] == 8
+    assert [link["minutes"] for link in result["data"]["links"]] == [2, 2, 2, 2]
+    assert "不包括轉車步行和等車" in result["note"]
+    assert "對不齊" not in result["note"]
+
+
+def test_ride_estimate_leaves_total_empty_when_a_link_disagrees(monkeypatch):
+    boards = {
+        ("ISL", "CHW"): next_board("CHW", "CEN", ["2026-10-29 10:00:00", "2026-10-29 10:04:00", "2026-10-29 10:08:00"]),
+        ("ISL", "TIH"): next_board("TIH", "CEN", ["2026-10-29 10:02:00", "2026-10-29 10:06:00", "2026-10-29 10:10:00"]),
+        ("ISL", "ADM"): next_board(
+            "ADM",
+            "CEN",
+            ["2026-10-29 10:02:00", "2026-10-29 10:04:00", "2026-10-29 10:06:00", "2026-10-29 10:08:00"],
+        ),
+    }
+    monkeypatch.setattr(mtr.mtr_core, "lines_and_stations", lambda: envelope(NETWORK))
+    monkeypatch.setattr(mtr.mtr_core, "next_train", lambda line, station: boards[(line, station)])
+    result = mtr.mtr_ride_estimate("柴灣", "金鐘")
+    assert result["data"]["minutes"] is None
+    assert [link["minutes"] for link in result["data"]["links"]] == [2, None]
+    assert "天后到金鐘" in result["note"]
+    assert "沒有加總全程" in result["note"]
+
+
+def test_same_station_estimate_is_zero(monkeypatch):
+    def fail(line, station):
+        raise AssertionError("same station does not need a live train")
+
+    monkeypatch.setattr(mtr.mtr_core, "lines_and_stations", lambda: envelope(NETWORK))
+    monkeypatch.setattr(mtr.mtr_core, "next_train", fail)
+    result = mtr.mtr_ride_estimate("金鐘", "金鐘")
+    assert result["data"]["minutes"] == 0
+    assert result["data"]["links"] == []
+
+
 def test_usecase_module_has_no_url_or_cache():
     text = Path(mtr.__file__).read_text(encoding="utf-8")
     assert "http://" not in text

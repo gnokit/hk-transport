@@ -3,14 +3,16 @@
 Each function calls `hk_transport.mtr_core` and does not fetch HTTP itself.
 A result that the published data cannot support has `data: null` and a note.
 
-These tools do not answer: first or last train, journey minutes, which exit
-serves a building, crowding, or the high-speed rail.
+These tools do not answer: first or last train, which exit serves a building,
+crowding, or the high-speed rail. `mtr_ride_estimate` estimates in-vehicle
+minutes from live arrivals and leaves the total empty when a link does not agree.
 """
 
 from __future__ import annotations
 
 import heapq
 from collections import defaultdict
+from datetime import datetime, timedelta
 
 from hk_transport import mtr_core
 from hk_transport._result import NO_ALERT, compose
@@ -324,6 +326,53 @@ def _journey_path(rows: list[dict], origin_ids: list[str], dest_ids: list[str]) 
     }
 
 
+def _journey_query(origin: str, destination: str) -> tuple[dict, dict | None, str | None]:
+    source = mtr_core.lines_and_stations()
+    rows = source["data"]
+    origin_ids = _match_ids(origin, rows)
+    dest_ids = _match_ids(destination, rows)
+    if not origin_ids or not dest_ids:
+        missing = origin if not origin_ids else destination
+        return source, None, _missing(missing)
+    if _ambiguous(origin_ids) or _ambiguous(dest_ids):
+        reps = _representatives(rows)
+        return (
+            source,
+            {
+                "origin_matches": [_view(reps[station_id]) for station_id in origin_ids],
+                "destination_matches": [_view(reps[station_id]) for station_id in dest_ids],
+            },
+            "這個名稱對應多於一個車站，沒有選其中一條路徑。",
+        )
+    reps = _representatives(rows)
+    if set(origin_ids) & set(dest_ids):
+        shared = next(iter(set(origin_ids) & set(dest_ids)))
+        return (
+            source,
+            {
+                "origin": _view(reps[shared]),
+                "destination": _view(reps[shared]),
+                "transfers": 0,
+                "ride_count": 0,
+                "legs": [],
+                "interchanges": [],
+            },
+            "起點同終點是同一個站。",
+        )
+    path = _journey_path(rows, origin_ids, dest_ids)
+    if path is None:
+        return source, None, "這兩站在重鐵路網裡接不上。"
+    return (
+        source,
+        {
+            "origin": _view(reps[origin_ids[0]]),
+            "destination": _view(reps[dest_ids[0]]),
+            **path,
+        },
+        None,
+    )
+
+
 def mtr_journey(origin: str, destination: str) -> dict:
     """兩站之間的一條路徑：乘哪條線、在哪裡轉車、中間停哪些站。
 
@@ -335,49 +384,133 @@ def mtr_journey(origin: str, destination: str) -> dict:
     轉車以共用車站編號連接。機場快線香港站（44）、東涌線香港站（39）
     和中環站（1）可以互轉。搜尋先減少轉車次數，再減少停車站數。
     """
-    source = mtr_core.lines_and_stations()
+    source, data, note = _journey_query(origin, destination)
+    return compose([source], data, note=note)
+
+
+_LINK_TOLERANCE = timedelta(seconds=30)
+_MAX_LINK_MINUTES = 8
+
+
+def _parse_train_time(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+
+
+def _direction_terminus(rows: list[dict], line_code: str, direction: str) -> str | None:
+    stops = [
+        row for row in rows if row["line_code"] == line_code and row["direction"] == direction
+    ]
+    if not stops:
+        return None
+    stops.sort(key=lambda row: row["sequence"])
+    return stops[-1]["code"]
+
+
+def _arrival_times(live: dict, dest_code: str) -> list[datetime]:
+    times = []
+    for direction in live["data"]["directions"]:
+        for train in direction["trains"]:
+            if train.get("dest") != dest_code:
+                continue
+            if train.get("valid") not in (None, "", "Y", "y"):
+                continue
+            parsed = _parse_train_time(train.get("time"))
+            if parsed is not None:
+                times.append(parsed)
+    return sorted(set(times))
+
+
+def _agreed_minutes(upstream: list[datetime], downstream: list[datetime]) -> int | None:
+    """Minutes one train takes from one station to the next.
+
+    A zero-minute match is kept as a competing explanation, because two station
+    clocks can differ by a few seconds, but it is never the chosen ride time.
+    """
+    scores: list[tuple[int, int]] = []
+    for offset in range(_MAX_LINK_MINUTES + 1):
+        gap = timedelta(minutes=offset)
+        hits = sum(
+            any(abs(item - (start + gap)) <= _LINK_TOLERANCE for item in downstream)
+            for start in upstream
+        )
+        scores.append((hits, offset))
+    scores.sort(key=lambda item: (-item[0], item[1]))
+    positive = [item for item in scores if item[1] > 0]
+    if not positive:
+        return None
+    best_hits, best_offset = positive[0]
+    others = [hits for hits, offset in scores if offset != best_offset]
+    second_hits = others[0] if others else 0
+    if best_hits >= 2 and best_hits > second_hits:
+        return best_offset
+    return None
+
+
+def mtr_ride_estimate(origin: str, destination: str) -> dict:
+    """用實時到站時間估算兩站之間的車上分鐘。
+
+    路徑來自 `lines_and_stations`。每一段呼叫 `next_train`，只看開往該方向
+    終點站的班次。同一班車在下一站的到站時間減去這一站的到站時間，就是這一段。
+    至少兩班車同意同一個分鐘，而且沒有另一個分鐘同樣多人同意，才採用。
+    任何一段對不齊，全程分鐘留空。
+
+    用法：`mtr_ride_estimate("長沙灣", "海洋公園")`。
+    市民會問：全程大約幾耐？
+
+    這不是港鐵公布的行車時間。同一站兩班車相減是班距，不用來估算。
+    停站時間已經在兩站的差距裡，不會每站再加 30 秒。不包括轉車步行和等車。
+    """
+    source, data, note = _journey_query(origin, destination)
+    if not data or "legs" not in data:
+        return compose([source], data, note=note)
+    if not data["legs"]:
+        return compose([source], {**data, "minutes": 0, "links": []}, note=note)
+
     rows = source["data"]
-    origin_ids = _match_ids(origin, rows)
-    dest_ids = _match_ids(destination, rows)
-    if not origin_ids or not dest_ids:
-        missing = origin if not origin_ids else destination
-        return compose([source], None, note=_missing(missing))
-    if _ambiguous(origin_ids) or _ambiguous(dest_ids):
-        reps = _representatives(rows)
-        return compose(
-            [source],
-            {
-                "origin_matches": [_view(reps[station_id]) for station_id in origin_ids],
-                "destination_matches": [_view(reps[station_id]) for station_id in dest_ids],
-            },
-            note="這個名稱對應多於一個車站，沒有選其中一條路徑。",
-        )
-    if set(origin_ids) & set(dest_ids):
-        reps = _representatives(rows)
-        shared = next(iter(set(origin_ids) & set(dest_ids)))
-        return compose(
-            [source],
-            {
-                "origin": _view(reps[shared]),
-                "destination": _view(reps[shared]),
-                "transfers": 0,
-                "ride_count": 0,
-                "legs": [],
-                "interchanges": [],
-            },
-            note="起點同終點是同一個站。",
-        )
-    path = _journey_path(rows, origin_ids, dest_ids)
-    if path is None:
-        return compose([source], None, note="這兩站在重鐵路網裡接不上。")
-    reps = _representatives(rows)
+    lives: dict[tuple[str, str], dict] = {}
+    links = []
+    for leg in data["legs"]:
+        terminus = _direction_terminus(rows, leg["line_code"], leg["direction"])
+        stations = leg["stations"]
+        boards = []
+        for station in stations:
+            key = (leg["line_code"], station["code"])
+            if key not in lives:
+                lives[key] = mtr_core.next_train(leg["line_code"], station["code"])
+            boards.append(_arrival_times(lives[key], terminus or ""))
+        for before, after, upstream, downstream in zip(
+            stations, stations[1:], boards, boards[1:]
+        ):
+            links.append(
+                {
+                    "line_code": leg["line_code"],
+                    "line_zh": leg["line_zh"],
+                    "line_en": leg["line_en"],
+                    "from": before,
+                    "to": after,
+                    "minutes": _agreed_minutes(upstream, downstream),
+                }
+            )
+    unknown = [f"{link['from']['name_zh']}到{link['to']['name_zh']}" for link in links if link["minutes"] is None]
+    minutes = None if unknown else sum(link["minutes"] for link in links)
+    estimate_note = (
+        f"有路段的班次對不齊，沒有加總全程。對不齊的是：{'、'.join(unknown)}。"
+        if unknown
+        else "這是由實時到站時間估算的車上分鐘，不是港鐵公布的行車時間。"
+    )
     return compose(
-        [source],
-        {
-            "origin": _view(reps[origin_ids[0]]),
-            "destination": _view(reps[dest_ids[0]]),
-            **path,
-        },
+        [source, *lives.values()],
+        {**data, "minutes": minutes, "links": links},
+        note=_join_notes(
+            note,
+            estimate_note,
+            "不包括轉車步行和等車。",
+        ),
     )
 
 
