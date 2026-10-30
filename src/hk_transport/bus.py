@@ -19,7 +19,14 @@ import math
 import re
 from collections import defaultdict
 
-from hk_transport import _graph, als, bus_core, geocode, notices
+from hk_transport import _graph, bus_core, notices
+from hk_transport._places import (
+    distance as _distance,
+    nearest_stop as _nearest_stop,
+    outside as _outside,
+    place as _place,
+    stops_within as _stops_within,
+)
 from hk_transport._result import compose
 
 _WALK = 400
@@ -29,208 +36,6 @@ JOURNEY_NOTE = (
     "只有九巴／龍運，跨營辦商轉車未接上。"
     "成本是轉車次數同停站數，不是時間。步行距離是直線距離。"
 )
-
-
-def _distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    radius = 6371000
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    delta_phi = phi2 - phi1
-    delta_lambda = math.radians(lon2 - lon1)
-    a = (
-        math.sin(delta_phi / 2) ** 2
-        + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
-    )
-    return 2 * radius * math.asin(math.sqrt(a))
-
-
-def _view(row: dict) -> dict:
-    return {"stop": row["stop"], "name_zh": row["name_zh"], "name_en": row["name_en"]}
-
-
-def _stops_within(
-    stops: dict[str, dict], latitude: float, longitude: float, radius: float
-) -> dict[str, float]:
-    """Every stop inside the radius, with its straight-line distance."""
-    found: dict[str, float] = {}
-    for stop_id, row in stops.items():
-        if row["latitude"] is None or row["longitude"] is None:
-            continue
-        distance = _distance(latitude, longitude, row["latitude"], row["longitude"])
-        if distance <= radius:
-            found[stop_id] = distance
-    return found
-
-
-def _nearest_stop(
-    stops: dict[str, dict], latitude: float, longitude: float
-) -> tuple[float, dict] | None:
-    """The closest stop and its straight-line distance, whatever the radius."""
-    best: tuple[float, dict] | None = None
-    for row in stops.values():
-        if row["latitude"] is None or row["longitude"] is None:
-            continue
-        distance = _distance(latitude, longitude, row["latitude"], row["longitude"])
-        if best is None or distance < best[0]:
-            best = (distance, row)
-    return best
-
-
-def _outside(stops: dict[str, dict], point: dict, radius: int) -> str:
-    """Say there is no stop in the radius, and how far the nearest one is.
-
-    A bare "no stop" leaves the caller unable to tell a wrong place name from
-    a place with no bus service. The nearest distance separates the two.
-    """
-    nearest = _nearest_stop(stops, point["latitude"], point["longitude"])
-    head = f"{radius} 米內沒有九巴／龍運站。"
-    if nearest is None:
-        return head
-    distance, row = nearest
-    return f"{head}最近的是{row['name_zh']}，直線 {round(distance)} 米。"
-
-
-def _name_rank(query: str, row: dict) -> int:
-    """How well a search result's own name matches what was asked for."""
-    folded = query.casefold()
-    names = [name.casefold() for name in (row.get("name_zh"), row.get("name_en")) if name]
-    if any(name == folded for name in names):
-        return 0
-    if any(name.startswith(folded) for name in names):
-        return 1
-    if any(folded in name for name in names):
-        return 2
-    return 3
-
-
-def _place(query: str, stops: dict[str, dict]) -> tuple[dict | None, str | None]:
-    """Resolve a stop name, a stop id, or a place name to one point.
-
-    A stop name or id wins outright: those are the operator's own names. A
-    place goes to the Lands Department place search, which knows place and
-    facility names that the address lookup does not. The address lookup is
-    the fallback for a street address the place search cannot place.
-    """
-    text = query.strip()
-    exact = [
-        row
-        for row in stops.values()
-        if row["stop"] == text or row["name_zh"] == text or row["name_en"] == text
-    ]
-    if exact and exact[0]["latitude"] is not None:
-        row = exact[0]
-        return (
-            {
-                "query": text,
-                "resolved_as": "stop",
-                "name_zh": row["name_zh"],
-                "name_en": row["name_en"],
-                "latitude": row["latitude"],
-                "longitude": row["longitude"],
-            },
-            None,
-        )
-    found = geocode.place_search(text)
-    matches = [row for row in (found["data"] or []) if row["latitude"] is not None]
-    if matches:
-        matches.sort(key=lambda row: _name_rank(text, row))
-        best = matches[0]
-        point = {
-            "query": text,
-            "resolved_as": "place",
-            "name_zh": best["name_zh"],
-            "name_en": best["name_en"],
-            "district_zh": best["district_zh"],
-            "latitude": best["latitude"],
-            "longitude": best["longitude"],
-        }
-        other = [
-            {"name_zh": row["name_zh"], "district_zh": row["district_zh"]}
-            for row in matches[1:]
-            if row["district_zh"] != best["district_zh"]
-        ][:2]
-        if other:
-            point["also_matched"] = other
-        return point, None
-    found = als.address_lookup(text, n=5)
-    matches = [
-        item for item in (found["data"] or []) if item.get("latitude") and item.get("longitude")
-    ]
-    if not matches:
-        return None, f"找不到地方：{text}"
-    matches.sort(key=lambda item: item.get("score") or 0, reverse=True)
-    best = matches[0]
-    return (
-        {
-            "query": text,
-            "resolved_as": "address",
-            "name_zh": best.get("building_zh") or best.get("street_zh"),
-            "name_en": best.get("building_en") or best.get("street_en"),
-            "district_zh": best.get("district_zh"),
-            "latitude": float(best["latitude"]),
-            "longitude": float(best["longitude"]),
-            "score": best.get("score"),
-        },
-        None,
-    )
-
-
-def _graph_of(rows: list[dict]) -> tuple[list[tuple], list[tuple[int, int, str]]]:
-    """Platform nodes and edges from route-stop rows.
-
-    A node is a position on one trip: (route, direction, service_type, stop).
-    Ride edges join consecutive stops on a trip; transfer edges join two trips
-    at the same stop.
-    """
-    variants: dict[tuple[str, str, str], list[tuple[float, str]]] = defaultdict(list)
-    for row in rows:
-        variants[(row["route"], row["direction"], row["service_type"])].append(
-            (row["seq"] or 0, row["stop"])
-        )
-    nodes: list[tuple] = []
-    node_of: dict[tuple, int] = {}
-    for key, stops in variants.items():
-        stops.sort()
-        for index, (_, stop) in enumerate(stops):
-            node_of[(key, index)] = len(nodes)
-            nodes.append((key, stop))
-    edges: list[tuple[int, int, str]] = []
-    for key, stops in variants.items():
-        for index in range(len(stops) - 1):
-            edges.append((node_of[(key, index)], node_of[(key, index + 1)], _graph.RIDE))
-    by_stop: dict[str, list[tuple[tuple, int]]] = defaultdict(list)
-    for node, (key, stop) in enumerate(nodes):
-        by_stop[stop].append((key, node))
-    for items in by_stop.values():
-        for first_key, first_node in items:
-            for second_key, second_node in items:
-                if first_key != second_key:
-                    edges.append((first_node, second_node, _graph.TRANSFER))
-    return nodes, edges
-
-
-def _legs(route, nodes: list[tuple]) -> list[dict]:
-    legs = []
-    index = 0
-    while index < len(route.nodes) - 1:
-        if route.kinds[index] == _graph.TRANSFER:
-            index += 1
-            continue
-        end = index
-        while end + 1 < len(route.nodes) and route.kinds[end] == _graph.RIDE:
-            end += 1
-        key = nodes[route.nodes[index]][0]
-        legs.append(
-            {
-                "route": key[0],
-                "direction": key[1],
-                "service_type": key[2],
-                "board": nodes[route.nodes[index]][1],
-                "alight": nodes[route.nodes[end]][1],
-                "stops": end - index,
-            }
-        )
-        index = end
-    return legs
 
 
 def bus_journey(
@@ -271,13 +76,13 @@ def bus_journey(
         stops, destination_point["latitude"], destination_point["longitude"], walk
     )
     if not origin_stops:
-        return compose(sources, None, note=_outside(stops, origin_point, walk))
+        return compose(sources, None, note=_outside(stops, origin_point, walk, "九巴／龍運站"))
     if not destination_stops:
-        return compose(sources, None, note=_outside(stops, destination_point, walk))
+        return compose(sources, None, note=_outside(stops, destination_point, walk, "九巴／龍運站"))
 
     route_rows = bus_core.kmb_route_stops_all()
     sources.append(route_rows)
-    nodes, edges = _graph_of(route_rows["data"])
+    nodes, edges = _graph.build(route_rows["data"])
     starts = [index for index, (_, stop) in enumerate(nodes) if stop in origin_stops]
     goals = {index for index, (_, stop) in enumerate(nodes) if stop in destination_stops}
 
@@ -285,10 +90,10 @@ def bus_journey(
     chosen: list[dict] = []
     seen: set[tuple[tuple[str, str], ...]] = set()
     for route in found:
-        legs = _legs(route, nodes)
+        legs = _graph.legs(route, nodes)
         if not legs:
             continue
-        signature = tuple((leg["route"], leg["direction"]) for leg in legs)
+        signature = tuple((leg["key"][0], leg["key"][1]) for leg in legs)
         if signature in seen:
             continue
         seen.add(signature)
@@ -299,7 +104,12 @@ def bus_journey(
                 "stops": route.rides,
                 "legs": [
                     {
-                        **leg,
+                        "route": leg["key"][0],
+                        "direction": leg["key"][1],
+                        "service_type": leg["key"][2],
+                        "board": leg["board"],
+                        "alight": leg["alight"],
+                        "stops": leg["stops"],
                         "board_name": stops[leg["board"]]["name_zh"],
                         "alight_name": stops[leg["alight"]]["name_zh"],
                     }
@@ -307,7 +117,7 @@ def bus_journey(
                 ],
                 "walk_in": round(origin_stops[board]),
                 "walk_out": round(destination_stops[alight]),
-                "overnight_hint": any(_OVERNIGHT.match(leg["route"]) for leg in legs),
+                "overnight_hint": any(_OVERNIGHT.match(leg["key"][0]) for leg in legs),
             }
         )
         if len(chosen) >= options:
@@ -485,7 +295,7 @@ def bus_stops_near(place: str, limit: int = 8, walk: int = _WALK) -> dict:
         return compose(sources, None, note=note)
     found = _stops_within(stops, point["latitude"], point["longitude"], walk)
     if not found:
-        return compose(sources, None, note=_outside(stops, point, walk))
+        return compose(sources, None, note=_outside(stops, point, walk, "九巴／龍運站"))
     ordered = sorted(found.items(), key=lambda item: item[1])[:limit]
     return compose(
         sources,
@@ -575,9 +385,9 @@ def bus_direct(origin: str, destination: str) -> dict:
     start_stops = _stops_within(stops, start["latitude"], start["longitude"], _WALK)
     end_stops = _stops_within(stops, end["latitude"], end["longitude"], _WALK)
     if not start_stops:
-        return compose(sources, None, note=_outside(stops, start, _WALK))
+        return compose(sources, None, note=_outside(stops, start, _WALK, "九巴／龍運站"))
     if not end_stops:
-        return compose(sources, None, note=_outside(stops, end, _WALK))
+        return compose(sources, None, note=_outside(stops, end, _WALK, "九巴／龍運站"))
     snapshot = bus_core.kmb_route_stops_all()
     sources.append(snapshot)
     by_variant: dict[tuple[str, str, str], list[tuple[float, str]]] = defaultdict(list)
@@ -643,7 +453,7 @@ def bus_eta(route: str | None = None, stop: str | None = None) -> dict:
             return compose(sources, None, note=note)
         near = _stops_within(stops, point["latitude"], point["longitude"], _WALK)
         if not near:
-            return compose(sources, None, note=_outside(stops, point, _WALK))
+            return compose(sources, None, note=_outside(stops, point, _WALK, "九巴／龍運站"))
         stop_id = min(near, key=lambda key: near[key])
         live = bus_core.kmb_stop_eta(stop_id, text)
         sources.append(live)
@@ -665,7 +475,7 @@ def bus_eta(route: str | None = None, stop: str | None = None) -> dict:
         return compose(sources, None, note=note)
     near = _stops_within(stops, point["latitude"], point["longitude"], _WALK)
     if not near:
-        return compose(sources, None, note=_outside(stops, point, _WALK))
+        return compose(sources, None, note=_outside(stops, point, _WALK, "九巴／龍運站"))
     stop_id = min(near, key=lambda key: near[key])
     snapshot = bus_core.kmb_route_stops_all()
     sources.append(snapshot)

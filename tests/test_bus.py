@@ -1,6 +1,6 @@
 import pytest
 
-from hk_transport import bus
+from hk_transport import _places, bus
 from hk_transport._result import MtrError
 
 
@@ -58,7 +58,7 @@ def wire(monkeypatch, routes):
     monkeypatch.setattr(bus.bus_core, "kmb_stops", lambda: envelope(STOPS))
     monkeypatch.setattr(bus.bus_core, "kmb_route_stops_all", lambda: envelope(routes))
     # No place search in the offline tests; a name that is not a stop is far away.
-    monkeypatch.setattr(bus.geocode, "place_search", lambda text, limit=5: envelope([]))
+    monkeypatch.setattr(_places.geocode, "place_search", lambda text, limit=5: envelope([]))
 
 
 def test_every_stop_in_radius_is_tried_not_just_the_nearest(monkeypatch):
@@ -109,7 +109,7 @@ def test_no_stop_within_the_radius_says_so(monkeypatch):
             ]
         )
 
-    monkeypatch.setattr(bus.als, "address_lookup", far_away)
+    monkeypatch.setattr(_places.als, "address_lookup", far_away)
     result = bus.bus_journey("甲站", "遠地方", walk=400)
     assert result["data"] is None
     assert "400 米內沒有九巴／龍運站" in result["note"]
@@ -218,7 +218,7 @@ def place(name, latitude, longitude, district="測試區", address=None):
 def test_a_place_name_comes_from_the_place_search(monkeypatch):
     wire(monkeypatch, ROUTES)
     monkeypatch.setattr(
-        bus.geocode, "place_search", lambda text, limit=5: envelope([place("乙站附近", 22.0101, 114.0101)])
+        _places.geocode, "place_search", lambda text, limit=5: envelope([place("乙站附近", 22.0101, 114.0101)])
     )
     result = bus.bus_journey("甲站", "乙站附近")
     assert result["data"]["destination"]["resolved_as"] == "place"
@@ -232,25 +232,25 @@ def test_a_place_in_another_district_is_reported_not_hidden(monkeypatch):
         place("乙站", 22.0100, 114.0100),
         place("乙站大廈", 22.2800, 114.1300, district="中西區"),
     ]
-    monkeypatch.setattr(bus.geocode, "place_search", lambda text, limit=5: envelope(rows))
+    monkeypatch.setattr(_places.geocode, "place_search", lambda text, limit=5: envelope(rows))
     point = bus.bus_journey("甲站", "乙站")["data"]["destination"]
     assert point["resolved_as"] == "stop"
     assert "also_matched" not in point
 
 
 def test_the_best_place_name_wins_over_a_facility_that_mentions_it(monkeypatch):
-    monkeypatch.setattr(bus.geocode, "place_search", lambda text, limit=5: envelope([
+    monkeypatch.setattr(_places.geocode, "place_search", lambda text, limit=5: envelope([
         place("自動心臟除顫器 - 南生圍", 22.4000, 114.1000),
         place("南生圍", 22.4633, 114.0370),
     ]))
-    point, note = bus._place("南生圍", {row["stop"]: row for row in STOPS})
+    point, note = _places.place("南生圍", {row["stop"]: row for row in STOPS})
     assert note is None
     assert point["name_zh"] == "南生圍"
 
 
 def test_address_lookup_is_the_fallback_when_the_place_search_is_empty(monkeypatch):
-    monkeypatch.setattr(bus.geocode, "place_search", lambda text, limit=5: envelope([]))
-    monkeypatch.setattr(bus.als, "address_lookup", lambda text, n=5: envelope([{
+    monkeypatch.setattr(_places.geocode, "place_search", lambda text, limit=5: envelope([]))
+    monkeypatch.setattr(_places.als, "address_lookup", lambda text, n=5: envelope([{
         "building_zh": "遠東發展元朗大廈",
         "building_en": "FAR EAST CONSORTIUM YUEN LONG BUILDING",
         "street_zh": "元朗安樂路",
@@ -260,7 +260,7 @@ def test_address_lookup_is_the_fallback_when_the_place_search_is_empty(monkeypat
         "longitude": "114.03204",
         "score": 100.0,
     }]))
-    point, note = bus._place("元朗", {row["stop"]: row for row in STOPS})
+    point, note = _places.place("元朗", {row["stop"]: row for row in STOPS})
     assert note is None
     assert point["resolved_as"] == "address"
     assert point["district_zh"] == "元朗區"

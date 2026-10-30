@@ -12,6 +12,7 @@ reproduces that order and the search can stay in a library.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass
 
 import networkx as nx
@@ -24,6 +25,70 @@ _END = "end"
 # Larger than any real number of stops on one route, so one transfer always
 # costs more than any number of stops.
 _TRANSFER_WEIGHT = 10_000
+
+
+def build(
+    rows: list[dict],
+    key_fields: tuple[str, ...] = ("route", "direction", "service_type"),
+    seq_field: str = "seq",
+    stop_field: str = "stop",
+) -> tuple[list[tuple], list[tuple[int, int, str]]]:
+    """Platform nodes and edges from route-stop rows.
+
+    A node is a position on one trip: (route, direction, service_type, stop).
+    Ride edges join consecutive stops on a trip; transfer edges join two trips
+    at the same stop. Callers pass rows that carry `route`, `direction`,
+    `service_type`, `seq` and `stop`, so the buses and the minibuses share
+    exactly one construction.
+    """
+    variants: dict[tuple, list[tuple[float, str]]] = defaultdict(list)
+    for row in rows:
+        variants[tuple(row[field] for field in key_fields)].append(
+            (row[seq_field] or 0, row[stop_field])
+        )
+    nodes: list[tuple] = []
+    node_of: dict[tuple, int] = {}
+    for key, stops in variants.items():
+        stops.sort()
+        for index, (_, stop) in enumerate(stops):
+            node_of[(key, index)] = len(nodes)
+            nodes.append((key, stop))
+    edges: list[tuple[int, int, str]] = []
+    for key, stops in variants.items():
+        for index in range(len(stops) - 1):
+            edges.append((node_of[(key, index)], node_of[(key, index + 1)], RIDE))
+    by_stop: dict[str, list[tuple[tuple, int]]] = defaultdict(list)
+    for node, (key, stop) in enumerate(nodes):
+        by_stop[stop].append((key, node))
+    for items in by_stop.values():
+        for first_key, first_node in items:
+            for second_key, second_node in items:
+                if first_key != second_key:
+                    edges.append((first_node, second_node, TRANSFER))
+    return nodes, edges
+
+
+def legs(route: "Route", nodes: list[tuple]) -> list[dict]:
+    """The rides in one found path, with the trip key and the two stops."""
+    found = []
+    index = 0
+    while index < len(route.nodes) - 1:
+        if route.kinds[index] == TRANSFER:
+            index += 1
+            continue
+        end = index
+        while end + 1 < len(route.nodes) and route.kinds[end] == RIDE:
+            end += 1
+        found.append(
+            {
+                "key": nodes[route.nodes[index]][0],
+                "board": nodes[route.nodes[index]][1],
+                "alight": nodes[route.nodes[end]][1],
+                "stops": end - index,
+            }
+        )
+        index = end
+    return found
 
 
 @dataclass(frozen=True)
