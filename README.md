@@ -37,7 +37,7 @@ Phase 1 ships one entry script, `mtr.sh`. Every later phase adds a sibling scrip
 | Phase | Modes | Entry script | Status |
 |---|---|---|---|
 | 1 | MTR heavy rail, Airport Express, Disneyland Resort Line, Light Rail, feeder buses | `mtr.sh` | ✅ 14 commands |
-| 2 | Franchised buses | `bus.sh` | tasks written |
+| 2 | Franchised buses | `bus.sh` | built, under test |
 | 3 | Green minibus, red minibus | `minibus.sh` | not started |
 | 4 | Tram, ferry | `tram.sh`, `ferry.sh` | not started |
 | 5 | Taxi, cross-boundary and high-speed rail | `taxi.sh`, `rail.sh` | not started |

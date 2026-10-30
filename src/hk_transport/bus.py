@@ -363,3 +363,247 @@ def bus_disruption(route: str, limit: int = 5) -> dict:
             note=DISRUPTION_NOTE + "這次兩份通告都沒有提到這條線。",
         )
     return compose([news, plans], {"route": token, "matches": matches}, note=DISRUPTION_NOTE)
+
+
+NO_DATA = {
+    "service_hours": "這個技能沒有巴士服務時間數據，答不到尾班車或服務時間。",
+    "frequency": "這個技能沒有班次表，答不到幾分鐘一班，也沒有循環線或特快標記。",
+    "accessibility": "這個技能沒有低地台或無障礙巴士數據，答不到輪椅上不上到。",
+}
+
+
+def bus_service_hours(route: str) -> dict:
+    """服務時間同尾班車：這個技能沒有數據。
+
+    九巴、城巴、新大嶼山的公開數據只有路線、站、車費同實時到站，
+    沒有首尾班車或服務時間。交還 `data: null` 同說明。
+    """
+    return compose([], None, note=NO_DATA["service_hours"])
+
+
+def bus_frequency(route: str) -> dict:
+    """班次密度、循環線、特快：這個技能沒有數據。
+
+    路線數據沒有班次表，也沒有循環線或特快標記。交還 `data: null` 同說明。
+    """
+    return compose([], None, note=NO_DATA["frequency"])
+
+
+def bus_accessibility(route: str) -> dict:
+    """低地台同無障礙：這個技能沒有數據。
+
+    公開數據沒有逐條線的低地台或無障礙資訊。交還 `data: null` 同說明。
+    """
+    return compose([], None, note=NO_DATA["accessibility"])
+
+
+def bus_stops_near(place: str, limit: int = 8, walk: int = _WALK) -> dict:
+    """一個地方附近的巴士站，同直線距離。
+
+    地點由 `address_lookup` 解析，站同座標來自 `kmb_stops`。
+    用法：`bus_stops_near("元州邨")`。
+    市民會問：我附近有邊幾個巴士站？最近嗰個喺邊？
+
+    只包含九巴／龍運的站。距離是直線距離，不是步行距離。
+    """
+    stops = {row["stop"]: row for row in bus_core.kmb_stops()["data"]}
+    sources = [bus_core.kmb_stops()]
+    point, note = _place(place, stops)
+    if point is None:
+        return compose(sources, None, note=note)
+    found = _stops_within(stops, point["latitude"], point["longitude"], walk)
+    ordered = sorted(found.items(), key=lambda item: item[1])[:limit]
+    return compose(
+        sources,
+        {
+            "place": point,
+            "radius": walk,
+            "stops": [
+                {**_view(stops[stop_id]), "distance": round(distance)}
+                for stop_id, distance in ordered
+            ],
+        },
+        note="只有九巴／龍運的站。距離是直線距離，不是步行距離。",
+    )
+
+
+def bus_route(route: str, place: str | None = None) -> dict:
+    """一條巴士線的停站順序，或問它經不經一個地方。
+
+    資料集 `hk-td-tis_21-etakmb`，端點由 `kmb_routes`、`kmb_route_stops`、
+    `kmb_stops` 帶出。
+    用法：`bus_route("45")`，`bus_route("45", place="何文田廣場")`。
+    市民會問：呢條線經唔經 Y？停邊啲站，順序係點？
+
+    逐個方向同服務類型列出，最多四個變體。只涵蓋九巴／龍運。
+    """
+    text = route.strip().upper()
+    stops = {row["stop"]: row for row in bus_core.kmb_stops()["data"]}
+    routes = bus_core.kmb_routes()
+    sources = [routes, bus_core.kmb_stops()]
+    variants = [row for row in routes["data"] if (row["route"] or "").upper() == text]
+    if not variants:
+        return compose(sources, None, note=f"找不到九巴／龍運路線：{route}")
+    wanted = None
+    if place is not None:
+        wanted, note = _place(place, stops)
+        if wanted is None:
+            return compose(sources, None, note=note)
+        near = _stops_within(stops, wanted["latitude"], wanted["longitude"], _WALK)
+    payload = []
+    for variant in variants[:4]:
+        rows = bus_core.kmb_route_stops(
+            variant["route"], variant["bound"], variant["service_type"]
+        )
+        sources.append(rows)
+        ordered = sorted(rows["data"], key=lambda row: row["seq"] or 0)
+        sequence = [
+            {
+                "seq": row["seq"],
+                "stop": row["stop"],
+                "name_zh": (stops.get(row["stop"]) or {}).get("name_zh"),
+            }
+            for row in ordered
+        ]
+        entry = {
+            "direction": variant["bound"],
+            "service_type": variant["service_type"],
+            "origin_zh": variant["orig_zh"],
+            "dest_zh": variant["dest_zh"],
+            "stops": sequence,
+        }
+        if wanted is not None:
+            entry["serves_place"] = any(row["stop"] in near for row in ordered)
+        payload.append(entry)
+    note = "只有九巴／龍運。"
+    if wanted is not None:
+        note += "經唔經係用 400 米內的站判斷，唔係官方路線圖。"
+    return compose(sources, {"route": text, "variants": payload}, note=note)
+
+
+def bus_direct(origin: str, destination: str) -> dict:
+    """兩個站之間有冇一程過，同一方向同一程車。
+
+    站序來自 `kmb_route_stops_all` 的快照，站名來自 `kmb_stops`。
+    用法：`bus_direct("元州邨", "何文田廣場")`。
+    市民會問：由 A 去 B 有冇一程過？冇嘅話喺邊度轉？
+
+    交還每條一程過的路線，同埋上落站在該線的次序。冇就 `data: null`。
+    """
+    stops = {row["stop"]: row for row in bus_core.kmb_stops()["data"]}
+    sources = [bus_core.kmb_stops()]
+    start, note = _place(origin, stops)
+    if start is None:
+        return compose(sources, None, note=note)
+    end, note = _place(destination, stops)
+    if end is None:
+        return compose(sources, None, note=note)
+    start_stops = _stops_within(stops, start["latitude"], start["longitude"], _WALK)
+    end_stops = _stops_within(stops, end["latitude"], end["longitude"], _WALK)
+    if not start_stops or not end_stops:
+        return compose(sources, None, note="其中一端 400 米內沒有九巴／龍運站。")
+    snapshot = bus_core.kmb_route_stops_all()
+    sources.append(snapshot)
+    by_variant: dict[tuple[str, str, str], list[tuple[float, str]]] = defaultdict(list)
+    for row in snapshot["data"]:
+        by_variant[(row["route"], row["direction"], row["service_type"])].append(
+            (row["seq"] or 0, row["stop"])
+        )
+    found = []
+    for (route, direction, service), rows in by_variant.items():
+        rows.sort()
+        order = [stop for _, stop in rows]
+        for board_index, board in enumerate(order):
+            if board not in start_stops:
+                continue
+            for alight_index in range(board_index + 1, len(order)):
+                alight = order[alight_index]
+                if alight in end_stops:
+                    found.append(
+                        {
+                            "route": route,
+                            "direction": direction,
+                            "service_type": service,
+                            "board": _view(stops[board]),
+                            "alight": _view(stops[alight]),
+                            "stops": alight_index - board_index,
+                            "walk_in": round(start_stops[board]),
+                            "walk_out": round(end_stops[alight]),
+                        }
+                    )
+                    break
+    if not found:
+        return compose(
+            sources,
+            None,
+            note="九巴／龍運沒有一程過的路線；跨營辦商轉車未支援。",
+        )
+    found.sort(key=lambda option: (option["stops"], option["walk_in"] + option["walk_out"]))
+    return compose(
+        sources,
+        {"origin": start, "destination": end, "direct": found[:5]},
+        note="只有九巴／龍運。距離是直線距離，站數是分段數，不是時間。",
+    )
+
+
+def bus_eta(route: str | None = None, stop: str | None = None) -> dict:
+    """下一班幾時到。以一條線，或一個站。
+
+    資料集 `hk-td-tis_21-etakmb`，端點由 `kmb_route_eta`、`kmb_stop_eta` 帶出。
+    用法：`bus_eta(route="1A")`，`bus_eta(route="1A", stop="元州邨")`。
+    市民會問：下一班幾時到？
+
+    只涵蓋九巴／龍運。一個站而冇指定路線時，只查該站頭五條路線，
+    因為逐條線查會變成几十個請求。
+    """
+    stops = {row["stop"]: row for row in bus_core.kmb_stops()["data"]}
+    if route is None and stop is None:
+        return compose([], None, note="要給一條路線或者一個站。")
+    sources = [bus_core.kmb_stops()]
+    text = (route or "").strip().upper()
+    if stop is not None and text:
+        point, note = _place(stop, stops)
+        if point is None:
+            return compose(sources, None, note=note)
+        near = _stops_within(stops, point["latitude"], point["longitude"], _WALK)
+        if not near:
+            return compose(sources, None, note="這個站 400 米內沒有九巴／龍運站。")
+        stop_id = min(near, key=lambda key: near[key])
+        live = bus_core.kmb_stop_eta(stop_id, text)
+        sources.append(live)
+        return compose(
+            sources,
+            {"route": text, "stop": _view(stops[stop_id]), "eta": live["data"]},
+            note="九巴／龍運的實時到站，未計其他營辦商。",
+        )
+    if text:
+        live = bus_core.kmb_route_eta(text)
+        sources.append(live)
+        return compose(
+            sources,
+            {"route": text, "eta": live["data"]},
+            note="九巴／龍運的實時到站，未計其他營辦商。",
+        )
+    point, note = _place(stop, stops)
+    if point is None:
+        return compose(sources, None, note=note)
+    near = _stops_within(stops, point["latitude"], point["longitude"], _WALK)
+    if not near:
+        return compose(sources, None, note="這個站 400 米內沒有九巴／龍運站。")
+    stop_id = min(near, key=lambda key: near[key])
+    snapshot = bus_core.kmb_route_stops_all()
+    sources.append(snapshot)
+    routes_here = []
+    for row in snapshot["data"]:
+        if row["stop"] == stop_id and row["route"] not in routes_here:
+            routes_here.append(row["route"])
+    eta_rows = []
+    for route_name in routes_here[:5]:
+        live = bus_core.kmb_stop_eta(stop_id, route_name)
+        sources.append(live)
+        eta_rows.extend(live["data"])
+    return compose(
+        sources,
+        {"stop": _view(stops[stop_id]), "routes": routes_here[:5], "eta": eta_rows},
+        note="九巴／龍運的實時到站。一個站只查頭五條路線。",
+    )

@@ -4,6 +4,9 @@ from pathlib import Path
 
 from hk_transport import __all__ as PUBLIC
 
+# bus.sh owns the bus commands; this script owns the rest.
+MTR_PUBLIC = tuple(name for name in PUBLIC if not name.startswith("bus_"))
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "mtr.sh"
 
@@ -28,7 +31,7 @@ def test_script_does_not_name_endpoints():
 def _command_lines(page: str) -> dict[str, str]:
     found = {}
     for line in page.splitlines():
-        for name in PUBLIC:
+        for name in MTR_PUBLIC:
             if line.strip().startswith(name + " "):
                 found[name] = line
     return found
@@ -40,11 +43,11 @@ def test_help_lists_every_public_function_on_its_own_line():
     assert result.stderr == ""
     assert "mtr.sh help <command>" in result.stdout
     lines = _command_lines(result.stdout)
-    assert set(lines) == set(PUBLIC)
+    assert set(lines) == set(MTR_PUBLIC)
     for name, line in lines.items():
         summary = line.strip()[len(name) :].strip()
         assert summary
-        assert not any(other in summary for other in PUBLIC)
+        assert not any(other in summary for other in MTR_PUBLIC)
 
 
 def test_help_without_a_command_matches_no_arguments():

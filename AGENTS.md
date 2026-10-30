@@ -2,7 +2,7 @@
 
 這個倉庫是港交寶（`hk-transport`），一個 AI agent skill。第一階段的港鐵部分已實作。代理指示在 [SKILL.md](SKILL.md)。回答市民時用 `mtr.sh`，`$SKILL_DIR` 是安裝目錄：`bash ${SKILL_DIR}/mtr.sh` 列出命令，`bash ${SKILL_DIR}/mtr.sh help <command>` 看該命令。新的公開函式要在 `mtr.sh` 加子命令。開工前先讀 [docs/TASKS.md](docs/TASKS.md)。那份文件是第一階段的範圍。
 
-程式分兩層。`src/hk_transport/mtr_core.py` 一個函式包一份港鐵數據。`src/hk_transport/als.py` 的 `address_lookup` 包地政總署地址查詢，是位置問題的核心，不快取。`src/hk_transport/exits.py` 的 `mtr_exits` 讀重鐵出入口座標，那是約一年有效的快照，查詢時不重新下載。`src/hk_transport/notices.py` 包運輸署特別交通消息和特別交通及運輸安排，全港交通都在內，不快取，也不按港鐵篩選。`src/hk_transport/mtr.py` 用這些函式回答市民的問題，裡面沒有 URL，也沒有快取。新的問題組合現有核心函式。新的數據源才加一個核心函式。三份共用的東西各有去處：`_result.py` 是信封同 `compose`，`_http.py` 是下載同 30 日快取，`_values.py` 是讀一格。
+程式分兩層。`src/hk_transport/mtr_core.py` 一個函式包一份港鐵數據。`src/hk_transport/als.py` 的 `address_lookup` 包地政總署地址查詢，是位置問題的核心，不快取。`src/hk_transport/exits.py` 的 `mtr_exits` 讀重鐵出入口座標，那是約一年有效的快照，查詢時不重新下載。`src/hk_transport/notices.py` 包運輸署特別交通消息和特別交通及運輸安排，全港交通都在內，不快取，也不按港鐵篩選。`src/hk_transport/mtr.py` 用這些函式回答市民的問題，裡面沒有 URL，也沒有快取。新的問題組合現有核心函式。新的數據源才加一個核心函式。第二階段加了 `bus_core.py`（一份巴士資源一個函式）、`bus.py`（十條市民問題十個函式）、`_graph.py`（兩種模式共用的尋路）同 `bus.sh`。三份共用的東西各有去處：`_result.py` 是信封同 `compose`，`_http.py` 是下載同 30 日快取，`_values.py` 是讀一格。
 
 每月 CSV 的副本在技能目錄的 `.cache/`，30 日後重新下載。`.gitignore` 已忽略這個目錄。測試用 `HK_TRANSPORT_CACHE` 指到暫存目錄。實時 API 不寫入快取。出入口快照在 `src/hk_transport/data/mtr_exits.json`，不放進 `.cache/`。同一個進程內另有一份記憶快取（`mtr_core._memory`），避免一次回答內重複解析同一份表；`clear_cache()` 清。
 
@@ -41,6 +41,15 @@ uv run pytest -m live -o addopts=
 - 輕鐵下一班的正確路徑是 `/v1/transport/mtr/lrt/getSchedule`。`/lrnt/getSchedule` 會 404。
 - 港鐵巴士車費以路線計，不是分段車費。到站 API 是 POST，主體是 `language` 同 `routeName`。規格以港鐵現行數據字典為準。同一個 `ROUTE_ID` 可以有多於一行中英文名稱（例如 K52）；那是同一條路線。車費檔裡相同的列併成一套。
 - 同一路線數據集裡的城際客運 CSV 不讀。
+
+## 巴士資料裡容易答錯的地方
+
+- 站、站序、實時到站用營辦商的數據；車費同公布全程時間用運輸署的 `hk-td-tis_23-routes-fares-geojson`。兩邊**只可以在（營辦商、路線號碼）上對齊**，站編號同變體用語唔通用。
+- `td_bus_fares()` 的 `fare` 是成人全程價，唔係分段收費；`journey_time_minutes` 是整條線的全程時間，唔係你坐嗰一段。
+- 九巴全部路線站表（`/route-stop`，3 MB）要 `Referer` 標頭，重複下載會被限流 403。工具讀快照，重建用 `scripts/build_bus_route_stops.py`。
+- 搵站時要考慮步行半徑內**所有**站，唔可以只取最近幾個，否則會漏掉直達路線。
+- 路線搜尋交還多個方案，按路線組合去重；成本係（轉車、段數），唔係時間。
+- 跨營辦商轉車接唔上，要照講。服務時間、班次、低地台冇數據，答「冇」。
 
 ## 寫程式時
 
