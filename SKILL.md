@@ -17,7 +17,7 @@ compatibility: Requires uv and Python >=3.13. $SKILL_DIR is the directory that c
 
 Answer a Hong Kong transport question by running one of this skill's scripts. Do not write a fetcher. Do not invent a figure a command did not return.
 
-**Scope: MTR heavy rail, Airport Express, Disneyland Resort Line, Light Rail, MTR feeder buses, address lookup, the heavy-rail exit snapshot, and the two Transport Department feeds — live special-traffic news and advance arrangements. Plus franchised buses (KMB and LWB) and green minibuses.** Out of scope today: Citybus and New Lantao Bus answers, tram, ferry, taxi, cross-boundary rail and high-speed rail.
+**Scope: one journey search over MTR, franchised buses (KMB, LWB, Citybus, NLB, MTR feeder buses), green minibuses and the Lands Department pedestrian network; plus per-mode route, fare, stop and arrival commands, address lookup, the heavy-rail exit snapshot, and the two Transport Department feeds.** Out of scope today: tram, ferry, taxi, cross-boundary rail and high-speed rail.
 
 > If the request is out of scope, say 「這個問題超出 hk-transport（港交寶）的範圍。」 Leave KMB and ferry programs in hkdata. Do not copy them.
 
@@ -77,7 +77,7 @@ Any point-to-point question goes to `journey.sh journey`. It searches the railwa
 - **Ranking is transfers, then stops, then walking.** One transfer counts as 100 stops, one stop as 100 metres of walking. Say that when the person asks why one option is first.
 - **Walking is real, not straight-line.** Metres and minutes come from the Lands Department pedestrian network. A leg marked `estimated: true` means that network had no route and the figure is straight-line — say which it is.
 - **There is no riding time.** Never add up a total duration. The walk minutes are the only minutes the answer contains.
-- **Scope: MTR, KMB/LWB, green minibus.** Citybus, NLB, tram, ferry, taxi and cross-boundary rail are not in the graph. When the answer looks short, that may be why.
+- **Scope: MTR, KMB/LWB, Citybus, NLB, MTR feeder buses, green minibus, plus a few outlying-island and cross-boundary routes.** Tram, ferry, taxi and high-speed rail are not in the graph. When the answer looks short, that may be why.
 - No fares are included; use the per-mode fare commands.
 
 ### Buses

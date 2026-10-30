@@ -518,3 +518,79 @@ def td_bus_fares() -> dict:
         data=list(seen.values()),
         note=note,
     )
+
+
+_TD_STOP_MEMORY: dict | None = None
+
+
+def clear_td_cache() -> None:
+    """Forget the parsed 75 MB stop table held in this process."""
+    global _TD_STOP_MEMORY
+    _TD_STOP_MEMORY = None
+
+
+def td_bus_route_stops() -> dict:
+    """全部專營巴士的站序，一站一列，帶 WGS84 座標。
+
+    資料集 `hk-td-tis_23-routes-fares-geojson`，端點 `JSON_BUS.json`
+    （75 MB，30 日快取，有 UTF-8 BOM）。
+    用法：`td_bus_route_stops()`。
+    市民會問：呢條線停邊啲站？呢個站有邊幾條線？
+
+    56,103 列，涵蓋 KMB、CTB、LWB、NLB、LRTFeeder（港鐵巴士）、XB、DB、PI。
+    **`companyCode` 可以是 `KMB+CTB` 這種聯營寫法，係一個變體，唔可以數兩次。**
+    停止位置用運輸署的數字站號，跨營辦商共用：4,490 個站號之中，2,366 個
+    由多過一個營辦商使用，所以 CTB 同 KMB 的同一個站會是同一個號。
+    站名有時夾住 `<br>`，這裡會清走。
+    """
+    global _TD_STOP_MEMORY
+    if _TD_STOP_MEMORY is not None:
+        return _TD_STOP_MEMORY
+    path, retrieved_at = cached_file(TD_BUS_FARES_URL, dataset_id=TD_FARES_DATASET)
+    rows: list[dict] = []
+    updated = None
+    try:
+        with path.open("rb") as handle:
+            if handle.read(3) != b"\xef\xbb\xbf":
+                handle.seek(0)
+            for feature in ijson.items(handle, "features.item"):
+                props = feature.get("properties") or {}
+                geometry = feature.get("geometry") or {}
+                coords = geometry.get("coordinates") or [None, None]
+                updated = updated or blank(props.get("lastUpdateDate"))
+                rows.append(
+                    {
+                        "company": blank(props.get("companyCode")),
+                        "route": blank(props.get("routeNameC")),
+                        "route_id": props.get("routeId"),
+                        "route_seq": props.get("routeSeq"),
+                        "route_type": props.get("routeType"),
+                        "service_mode": blank(props.get("serviceMode")),
+                        "special_type": props.get("specialType"),
+                        "seq": props.get("stopSeq"),
+                        "stop": str(props.get("stopId")),
+                        "name_zh": (blank(props.get("stopNameC")) or "").replace("<br>", " ").strip()
+                        or None,
+                        "name_en": blank(props.get("stopNameE")),
+                        "latitude": number(coords[1]) if len(coords) > 1 else None,
+                        "longitude": number(coords[0]) if len(coords) > 0 else None,
+                        "pick_drop": props.get("stopPickDrop"),
+                        "fare": number(props.get("fullFare")),
+                        "journey_time_minutes": number(props.get("journeyTime")),
+                    }
+                )
+    except (OSError, ValueError) as exc:
+        raise MtrError(str(exc), dataset_id=TD_FARES_DATASET, endpoint=TD_BUS_FARES_URL) from exc
+    _TD_STOP_MEMORY = envelope(
+        dataset_id=TD_FARES_DATASET,
+        endpoint=TD_BUS_FARES_URL,
+        retrieved_at=retrieved_at,
+        data_at=as_hkt(updated),
+        update_frequency="biweekly",
+        data=rows,
+        note=(
+            "站序同座標來自運輸署；`companyCode` 的 `KMB+CTB` 是聯營線，算一個變體。"
+            "站號跨營辦商共用。站名已清走 `<br>`。"
+        ),
+    )
+    return _TD_STOP_MEMORY

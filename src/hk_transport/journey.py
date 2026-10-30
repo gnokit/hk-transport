@@ -26,6 +26,7 @@ import math
 from collections import defaultdict
 
 from hk_transport import _places, bus_core, exits, minibus_core, mtr_core, pedroute
+from hk_transport.mtr import _line_names
 from hk_transport._result import compose
 
 _WALK = 800
@@ -42,15 +43,10 @@ _TRANSFER = 1_000_000
 _STOP = 1_000
 _WALK_WEIGHT = 10
 
-_MODE_NOTE = {
-    "mtr": "港鐵",
-    "bus": "九巴／龍運",
-    "minibus": "綠色專線小巴",
-}
-
 NOTE = (
     "方案按（轉車、停站、步行）加權排序：一次轉車當 100 個站，一個站當 100 米步行。唔係時間。"
-    "只有港鐵、九巴／龍運同綠色專線小巴；城巴、新大嶼山、電車、渡輪未接入。"
+    "已接入：港鐵、九巴／龍運、城巴、新大嶼山、港鐵巴士、綠色專線小巴，以及少量離島同跨境路線。"
+    "未接入：電車、渡輪、的士、高鐵。"
     "步行距離同時間由地政總署行人路網計算，路網冇覆蓋時會改用直線距離並標明。"
     "起點同終點係按地名解析出嚟的一個點，唔代表整個區域。"
 )
@@ -85,61 +81,77 @@ def _station_points() -> dict[str, dict]:
     return points
 
 
-def _trip_rows() -> list[tuple[str, tuple, float, str]]:
-    """(mode, trip key, sequence, point id) for every trip in every network."""
-    rows: list[tuple[str, tuple, float, str]] = []
-    for row in bus_core.kmb_route_stops_all()["data"]:
+def _trip_rows() -> list[dict]:
+    """One row per stop per trip, for every network in the graph."""
+    rows: list[dict] = []
+    for row in bus_core.td_bus_route_stops()["data"]:
         rows.append(
-            (
-                "bus",
-                (row["route"], row["direction"], row["service_type"]),
-                row["seq"] or 0,
-                f"bus:{row['stop']}",
-            )
-        )
-    for row in minibus_core.gmb_route_stops()["data"]:
-        rows.append(
-            (
-                "minibus",
-                (
+            {
+                "mode": "bus",
+                "key": (
+                    row["company"],
                     row["route_id"],
                     row["route_seq"],
                     row["service_mode"],
                     row["special_type"],
-                    row["route"],
                 ),
-                row["seq"] or 0,
-                f"minibus:{row['stop']}",
-            )
+                "seq": row["seq"] or 0,
+                "point": f"bus:{row['stop']}",
+                "route": row["route"],
+                "operator": row["company"],
+            }
+        )
+    for row in minibus_core.gmb_route_stops()["data"]:
+        rows.append(
+            {
+                "mode": "minibus",
+                "key": (
+                    row["route_id"],
+                    row["route_seq"],
+                    row["service_mode"],
+                    row["special_type"],
+                ),
+                "seq": row["seq"] or 0,
+                "point": f"minibus:{row['stop']}",
+                "route": row["route"],
+                "operator": "GMB",
+            }
         )
     for row in mtr_core.lines_and_stations()["data"]:
+        zh, _ = _line_names(row["line_code"])
         rows.append(
-            (
-                "mtr",
-                (row["line_code"], row["direction"]),
-                row["sequence"] or 0,
-                f"mtr:{row['id']}",
-            )
+            {
+                "mode": "mtr",
+                "key": (row["line_code"], row["direction"]),
+                "seq": row["sequence"] or 0,
+                "point": f"mtr:{row['id']}",
+                "route": zh or row["line_code"],
+                "operator": "MTR",
+            }
         )
     return rows
 
 
-def _point_table() -> dict[str, dict]:
+def _point_table(rows: list[dict]) -> dict[str, dict]:
+    """Every place you can stand at, with the name that network publishes."""
     points: dict[str, dict] = {}
-    for row in bus_core.kmb_stops()["data"]:
-        if row["latitude"] is None or row["longitude"] is None:
+    seen: dict[str, dict] = {}
+    for row in bus_core.td_bus_route_stops()["data"]:
+        if row.get("latitude") is None or row.get("longitude") is None:
             continue
-        points[f"bus:{row['stop']}"] = {
-            "point": f"bus:{row['stop']}",
+        seen.setdefault(row["stop"], row)
+    for stop_id, row in seen.items():
+        points[f"bus:{stop_id}"] = {
+            "point": f"bus:{stop_id}",
             "mode": "bus",
-            "stop": f"bus:{row['stop']}",
+            "stop": f"bus:{stop_id}",
             "name_zh": row["name_zh"],
             "name_en": row["name_en"],
             "latitude": row["latitude"],
             "longitude": row["longitude"],
         }
     for row in minibus_core.gmb_stops()["data"]:
-        if row["latitude"] is None or row["longitude"] is None:
+        if row.get("latitude") is None or row.get("longitude") is None:
             continue
         points[f"minibus:{row['stop']}"] = {
             "point": f"minibus:{row['stop']}",
@@ -169,13 +181,15 @@ def _graph() -> dict:
     if _memory is not None:
         return _memory
 
-    points = _point_table()
     trips = _trip_rows()
+    points = _point_table(trips)
     by_trip: dict[tuple[str, tuple], list[tuple[float, str]]] = defaultdict(list)
-    for mode, key, seq, point in trips:
-        if point not in points:
+    labels: dict[tuple[str, tuple], dict] = {}
+    for row in trips:
+        if row["point"] not in points:
             continue
-        by_trip[(mode, key)].append((seq, point))
+        by_trip[(row["mode"], row["key"])].append((row["seq"], row["point"]))
+        labels.setdefault((row["mode"], row["key"]), {"route": row["route"], "operator": row["operator"]})
 
     point_index = {key: index for index, key in enumerate(points)}
     nodes: list[tuple] = [("point", key) for key in points]
@@ -228,6 +242,7 @@ def _graph() -> dict:
 
     _memory = {
         "points": points,
+        "labels": labels,
         "point_index": point_index,
         "nodes": nodes,
         "adjacency": adjacency,
@@ -334,11 +349,13 @@ def _legs(path, graph, origin_point, destination_point) -> list[dict]:
             continue
         if kind == "board":
             mode, key = meta[0], meta[1]
+            label = graph["labels"].get((mode, key)) or {}
             ride = {
                 "type": "ride",
                 "mode": mode,
                 "trip": (mode, key),
-                "route": key[4] if mode == "minibus" else key[0],
+                "route": label.get("route"),
+                "operator": label.get("operator"),
                 "board": points[graph["nodes"][source][1]]["name_zh"],
                 "alight": None,
                 "stops": 0,
@@ -401,15 +418,16 @@ def journey(
 ) -> dict:
     """由一個地方去另一個地方，用晒所有已接入的交通網絡。
 
-    資料集：港鐵 `mtr_core.lines_and_stations`、九巴／龍運
-    `bus_core.kmb_route_stops_all`、綠色專線小巴 `minibus_core.gmb_route_stops`、
-    地政總署行人路網 `pedroute.walk_route`。
+    資料集：港鐵 `mtr_core.lines_and_stations`、專營巴士
+    `bus_core.td_bus_route_stops`（含城巴、新大嶼山、港鐵巴士）、
+    綠色專線小巴 `minibus_core.gmb_route_stops`、地政總署行人路網
+    `pedroute.walk_route`。
     用法：`journey("元州邨", "香港迪士尼樂園")`。
     市民會問：由我呢度去 X，搭咩車？要唔要轉車？行幾遠？
 
     交還多個方案，每個帶步行段同乘車段。成本係（轉車、停站、步行米），
     唔係時間；乘車時間冇數據，只有步行時間來自行人路網。
-    城巴、新大嶼山、電車、渡輪未接入，跨出這個範圍的組合接唔上。
+    電車、渡輪、的士同高鐵未接入，跨出這個範圍的組合接唔上。
     """
     options = options or 3
     walk = walk or _WALK

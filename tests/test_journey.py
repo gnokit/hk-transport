@@ -13,19 +13,35 @@ def stop(stop_id, name, latitude, longitude):
     }
 
 
-BUS_STOPS = [
-    stop("B1", "巴士一站", 22.0000, 114.0000),
-    stop("B2", "巴士二站", 22.0100, 114.0100),
-    stop("B3", "巴士三站", 22.0300, 114.0300),
-]
+def td_row(company, route, route_id, seq, stop_id, name, latitude, longitude):
+    return {
+        "company": company,
+        "route": route,
+        "route_id": route_id,
+        "route_seq": 1,
+        "route_type": 1,
+        "service_mode": "R",
+        "special_type": 0,
+        "seq": seq,
+        "stop": stop_id,
+        "name_zh": name,
+        "name_en": name,
+        "latitude": latitude,
+        "longitude": longitude,
+        "pick_drop": 3,
+        "fare": 5.0,
+        "journey_time_minutes": 30.0,
+    }
+
+
 GMB_STOPS = [
     stop("G1", "小巴一站", 22.0300, 114.0300),
     stop("G2", "小巴二站", 22.0900, 114.0900),
 ]
 BUS_ROWS = [
-    {"route": "R1", "direction": "O", "service_type": "1", "seq": 1, "stop": "B1"},
-    {"route": "R1", "direction": "O", "service_type": "1", "seq": 2, "stop": "B2"},
-    {"route": "R1", "direction": "O", "service_type": "1", "seq": 3, "stop": "B3"},
+    td_row("KMB", "R1", 100, 1, "B1", "巴士一站", 22.0000, 114.0000),
+    td_row("KMB", "R1", 100, 2, "B2", "巴士二站", 22.0100, 114.0100),
+    td_row("KMB", "R1", 100, 3, "B3", "巴士三站", 22.0300, 114.0300),
 ]
 GMB_ROWS = [
     {
@@ -85,8 +101,7 @@ def envelope(rows):
 
 @pytest.fixture
 def wired(monkeypatch):
-    monkeypatch.setattr(j.bus_core, "kmb_stops", lambda: envelope(BUS_STOPS))
-    monkeypatch.setattr(j.bus_core, "kmb_route_stops_all", lambda: envelope(BUS_ROWS))
+    monkeypatch.setattr(j.bus_core, "td_bus_route_stops", lambda: envelope(BUS_ROWS))
     monkeypatch.setattr(j.minibus_core, "gmb_stops", lambda: envelope(GMB_STOPS))
     monkeypatch.setattr(j.minibus_core, "gmb_route_stops", lambda: envelope(GMB_ROWS))
     monkeypatch.setattr(j.mtr_core, "lines_and_stations", lambda: envelope(MTR_ROWS))
@@ -158,5 +173,5 @@ def test_an_unreachable_place_says_so(wired, monkeypatch):
 def test_the_note_states_the_weighting_and_the_scope(wired):
     note = j.journey("巴士一站", "巴士二站")["note"]
     assert "轉車" in note
-    assert "城巴" in note
+    assert "電車" in note
     assert "地政總署" in note

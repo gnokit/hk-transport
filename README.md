@@ -91,7 +91,7 @@ Each command answers one kind of question. These are phase 1.
 
 | Command | Answers |
 |---|---|
-| `journey` | Which lines to ride and where to transfer, across MTR, KMB/LWB and green minibus, with real walking legs |
+| `journey` | Which lines to ride and where to transfer, across MTR, every franchised bus operator and green minibus, with real walking legs |
 
 **Heavy rail**
 
