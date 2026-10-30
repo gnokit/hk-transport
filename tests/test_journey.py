@@ -218,7 +218,7 @@ def test_a_crowded_corridor_still_links_the_station(monkeypatch):
     }
     adjacency = [[] for _ in range(len(points))]
     index = {key: n for n, key in enumerate(points)}
-    j._walk_links(points, adjacency, index)
+    j._walk_links(points, adjacency, index, j._units())
     linked = [t for t, w, kind, meta in adjacency[index["mtr:1"]] if kind == "walk"]
     assert linked, "the station is 120 m away and must not be crowded out"
     assert len(linked) <= j._LINK_NEIGHBOURS
@@ -229,3 +229,15 @@ def test_every_ride_covers_at_least_one_stop(wired):
     rides = [leg for leg in option["legs"] if leg["type"] == "ride"]
     assert rides
     assert all(leg["stops"] >= 1 for leg in rides)
+
+
+def test_the_cost_policy_covers_every_mode_in_the_graph(wired):
+    modes = {mode for (mode, _key) in j._graph()["labels"]}
+    assert modes
+    assert modes <= set(j.COST["board_minutes"])
+
+
+def test_the_policy_ranks_a_ferry_wait_above_a_train_wait():
+    boarding = j.COST["board_minutes"]
+    assert boarding["ferry"] > boarding["bus"] > boarding["mtr"]
+    assert j.COST["walk_minutes_per_km"] > 0

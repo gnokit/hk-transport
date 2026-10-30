@@ -53,14 +53,48 @@ _WALK_CAP = 1500
 _WALK_CALLS = 12
 _END = -1
 
-# One transfer outweighs any number of stops; one stop outweighs any walk
-# inside the cap. Encoded in one integer so a plain Dijkstra can search it.
-_TRANSFER = 1_000_000
-_STOP = 1_000
-_WALK_WEIGHT = 10
+# The routing policy. There is no ride-time data in Hong Kong, so these are
+# judgements, not measurements: the answer never prints them, it only ranks.
+# They are deliberately in one table so the numbers can be reviewed and tuned
+# as experience accumulates. Change a minute here and every answer follows.
+COST = {
+    # cost units per policy minute; larger = finer resolution, no other effect
+    "units_per_minute": 1000,
+    # one stop of riding
+    "stop_minutes": 2.0,
+    # walking, from the policy (not from the pedestrian API, which has its own)
+    "walk_minutes_per_km": 15.0,
+    # waiting for the next vehicle, which is the only unpredictable part
+    "board_minutes": {
+        "mtr": 4.0,
+        "tram": 4.0,
+        "minibus": 7.0,
+        "bus": 7.0,
+        "ferry": 25.0,
+    },
+}
+
+
+def _units() -> dict:
+    """Turn the policy table into integer edge weights.
+
+    Read this next to `COST`: one stop is `stop_minutes`, one metre of walking
+    is `walk_minutes_per_km / 1000`, and boarding costs the mode's wait plus the
+    first stop. No tier dominates another; a transfer is simply priced.
+    """
+    scale = COST["units_per_minute"]
+    return {
+        "stop": int(COST["stop_minutes"] * scale),
+        "walk": COST["walk_minutes_per_km"] / 1000 * scale,
+        "board": {
+            mode: int(minutes * scale)
+            for mode, minutes in COST["board_minutes"].items()
+        },
+    }
 
 NOTE = (
-    "方案按（轉車、停站、步行）加權排序：一次轉車當 100 個站，一個站當 100 米步行。唔係時間。"
+    "排序用政策權重，唔係時間：一個站當 2 分鐘，轉車按模式當 4 分鐘（港鐵、電車）到 25 分鐘（渡輪），"
+    "步行一公里當 15 分鐘。呢啲係假設，唔係量度出嚟的時間。"
     "已接入：港鐵、九巴／龍運、城巴、新大嶼山、港鐵巴士、綠色專線小巴、電車、渡輪，以及少量離島同跨境路線。"
     "未接入：山頂纜車、的士、高鐵。"
     "步行距離同時間由地政總署行人路網計算，路網冇覆蓋時會改用直線距離並標明。"
@@ -261,6 +295,7 @@ def _walk_links(
     points: dict[str, dict],
     adjacency: list[list[tuple]],
     point_index: dict[str, int],
+    units: dict,
 ) -> None:
     """Link nearby points, never letting one crowded mode starve the others.
 
@@ -307,7 +342,7 @@ def _walk_links(
             chosen.setdefault(other, gap)
         for other, gap in chosen.items():
             adjacency[point_index[key]].append(
-                (point_index[other], round(gap) * _WALK_WEIGHT, "walk", ())
+                (point_index[other], round(gap * units["walk"]), "walk", ())
             )
 
 
@@ -339,6 +374,7 @@ def _graph() -> dict:
             {"route": row["route"], "operator": row["operator"]},
         )
 
+    units = _units()
     point_index = {key: index for index, key in enumerate(points)}
     nodes: list[tuple] = [("point", key) for key in points]
     adjacency: list[list[tuple]] = [[] for _ in nodes]
@@ -356,16 +392,21 @@ def _graph() -> dict:
             adjacency.append([])
             board_point = point_index[stops[position - 1][1]]
             adjacency[board_point].append(
-                (node, _TRANSFER + _STOP, "board", (mode, key))
+                (
+                    node,
+                    units["board"].get(mode, units["stop"]) + units["stop"],
+                    "board",
+                    (mode, key),
+                )
             )
             adjacency[node].append(
                 (point_index[stops[position][1]], 0, "alight", (mode, key))
             )
             if previous is not None:
-                adjacency[previous].append((node, _STOP, "ride", (mode, key)))
+                adjacency[previous].append((node, units["stop"], "ride", (mode, key)))
             previous = node
 
-    _walk_links(points, adjacency, point_index)
+    _walk_links(points, adjacency, point_index, units)
 
     _memory = {
         "points": points,
@@ -374,6 +415,7 @@ def _graph() -> dict:
         "adjacency": adjacency,
         "labels": labels,
         "sources": sources,
+        "units": units,
         "point_key": {
             index: node[1] for index, node in enumerate(nodes) if node[0] == "point"
         },
@@ -401,6 +443,7 @@ def _dijkstra(
     starts: list[tuple[int, int]],
     end_weights: dict[int, int],
     point_key: dict[int, str],
+    units: dict,
     penalty: set | None = None,
     banned: set | None = None,
     hard_ban: set | None = None,
@@ -422,6 +465,7 @@ def _dijkstra(
             heapq.heappush(queue, (cost, node, True))
 
     goal = None
+    total = 0
     while queue:
         cost, node, walked = heapq.heappop(queue)
         state = (node, walked)
@@ -429,6 +473,7 @@ def _dijkstra(
             continue
         if node == _END:
             goal = state
+            total = cost
             break
         if not walked and node in end_weights:
             total = cost + end_weights[node]
@@ -449,7 +494,7 @@ def _dijkstra(
                 continue
             step = weight
             if penalty and kind == "board" and meta in penalty:
-                step = weight + _TRANSFER
+                step = weight + units["board"].get(meta[0], 0)
             candidate = cost + step
             nxt = (target, stepping)
             if candidate < best.get(nxt, math.inf):
@@ -469,7 +514,7 @@ def _dijkstra(
         path.append((before[0], state[0], kind, meta))
         state = before
     path.reverse()
-    return path
+    return path, total
 
 
 def _legs(path, graph, origin_point, destination_point) -> list[dict]:
@@ -549,6 +594,21 @@ def _legs(path, graph, origin_point, destination_point) -> list[dict]:
     return legs
 
 
+def _score(option: dict, units: dict) -> int:
+    """The option's cost in policy units, from what is actually shown.
+
+    Computed after the walks are re-priced, so the number and the legs agree.
+    """
+    total = 0
+    for leg in option["legs"]:
+        if leg["type"] == "walk":
+            total += round(leg["metres"] * units["walk"])
+        else:
+            total += units["board"].get(leg["mode"], units["stop"])
+            total += leg["stops"] * units["stop"]
+    return total
+
+
 def _price_walks(legs: list[dict], budget: _WalkBudget, sources: list[dict]) -> set:
     """Replace straight-line walk metres with the pedestrian network, in place.
 
@@ -602,17 +662,19 @@ def _search(graph, starts, end_weights, options: int, banned: set, origin_point,
     for (mode, key), label in graph["labels"].items():
         keys_by_label[(mode, label["operator"], label["route"])].add(key)
     for _ in range(options * 2):
-        path = _dijkstra(
+        found = _dijkstra(
             graph["adjacency"],
             starts,
             end_weights,
             graph["point_key"],
+            graph["units"],
             penalty,
             banned,
             hard_ban,
         )
-        if path is None:
+        if found is None:
             break
+        path, total = found
         legs = _legs(path, graph, origin_point, destination_point)
         rides = [leg for leg in legs if leg["type"] == "ride"]
         if not rides:
@@ -694,11 +756,12 @@ def journey(
     if not target_edges:
         return compose(sources, None, note=f"終點 {wide} 米內沒有已接入的站。")
 
+    walk_unit = graph["units"]["walk"]
     starts = [
-        (round(gap) * _WALK_WEIGHT, graph["point_index"][key]) for gap, key in origin_edges
+        (round(gap * walk_unit), graph["point_index"][key]) for gap, key in origin_edges
     ]
     end_weights = {
-        graph["point_index"][key]: round(gap) * _WALK_WEIGHT for gap, key in target_edges
+        graph["point_index"][key]: round(gap * walk_unit) for gap, key in target_edges
     }
     banned: set = set()
     chosen: list[dict] = []
@@ -715,6 +778,7 @@ def journey(
             option["walk_metres"] = sum(
                 leg["metres"] for leg in option["legs"] if leg["type"] == "walk"
             )
+            option["score"] = _score(option, graph["units"])
         if not bad or attempt == 1:
             break
         banned = bad
@@ -729,13 +793,7 @@ def journey(
         extra = f"每個方案的總步行都超過 {_WALK_CAP} 米，這裡只列最短的一個。"
     else:
         extra = ""
-    kept.sort(
-        key=lambda option: (
-            option["transfers"] * _TRANSFER
-            + option["stops"] * _STOP
-            + option["walk_metres"] * _WALK_WEIGHT
-        )
-    )
+    kept.sort(key=lambda option: option["score"])
     return compose(
         sources,
         {

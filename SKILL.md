@@ -77,7 +77,7 @@ Answer the person in Traditional Chinese.
 
 Any point-to-point question goes to `journey.sh journey`. It searches the railway, the buses and the green minibuses as **one graph**, with walking at both ends and between stops.
 
-- **Ranking is transfers, then stops, then walking.** One transfer counts as 100 stops, one stop as 100 metres of walking. Say that when the person asks why one option is first.
+- **Ranking is a policy, not a measurement.** One stop counts as 2 minutes, walking as 15 minutes per kilometre, and waiting for the next vehicle as 4 minutes (MTR, tram) to 25 (ferry). Say that when the person asks why one option is first — and never present it as a journey time.
 - **Walking is real, not straight-line.** Metres and minutes come from the Lands Department pedestrian network. A leg marked `estimated: true` means that network had no route and the figure is straight-line — say which it is.
 - **There is no riding time.** Never add up a total duration. The walk minutes are the only minutes the answer contains.
 - **Scope: MTR, KMB/LWB, Citybus, NLB, MTR feeder buses, green minibus, tram, Peak Tram, ferry, plus a few outlying-island and cross-boundary routes.** Taxi and high-speed rail are not in the graph. When the answer looks short, that may be why.
