@@ -47,6 +47,11 @@ _LINK = 300
 _MTR_LINK = 450
 _LINK_NEIGHBOURS = 20
 _PRIORITY_MODES = ("mtr", "ferry", "tram")
+# The Peak Tram is deliberately not in the graph. It is a tourist line whose
+# queue is the dominant cost and we have no queue or headway data, so any
+# boarding price would be a guess dressed as a fact. `tram.sh peak_tram`
+# answers "how much, which stops" on its own. See TASKS.md, 第四階段.
+_EXCLUDED_MODES = ("peaktram",)
 _BAD_WALK_RATIO = 2.5
 _WALK_RETRY = 1500
 _WALK_CAP = 1500
@@ -167,6 +172,7 @@ def _trip_rows(
                 "operator": "GMB",
             }
         )
+    # Only Hong Kong Tramways here: see _EXCLUDED_MODES.
     for row in tram_rows["data"]:
         rows.append(
             {

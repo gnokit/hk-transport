@@ -241,3 +241,14 @@ def test_the_policy_ranks_a_ferry_wait_above_a_train_wait():
     boarding = j.COST["board_minutes"]
     assert boarding["ferry"] > boarding["bus"] > boarding["mtr"]
     assert j.COST["walk_minutes_per_km"] > 0
+
+
+def test_the_peak_tram_is_kept_out_of_the_journey_graph(monkeypatch):
+    """The exclusion is deliberate, so a future change has to argue with a test."""
+    def boom():
+        raise AssertionError("journey must not load the Peak Tram")
+
+    monkeypatch.setattr(j.tram_core, "peak_tram_stops", boom)
+    modes = {mode for (mode, _key) in j._graph()["labels"]}
+    assert "peaktram" not in modes
+    assert "tram" in modes
