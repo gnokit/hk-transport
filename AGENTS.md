@@ -47,3 +47,5 @@ uv run pytest -m live -o addopts=
 實作開始後，一個函式做一件事，相關函式放在同一個港鐵模組。函式自己帶齊 import，回傳 JSON，不 `print`。docstring 寫明它提供什麼、資料集編號、端點、用法、對應的市民問法、以及上面這些 quirk。`mtr.py` 不可以有 URL，所以那一層的 docstring 寫「端點由 `lines_and_stations` 帶出」，實際網址寫在核心函式的 docstring。讀 CSV 或 API 的單一格用 `_values.blank` 同 `number`，不另寫一份；只有一格是「-」或空白時，那是沒有值，不是那個字串。
 
 先對活的端點取一次樣，再按觀察到的欄位寫。文件裡的欄位名稱以 2026-10-29 的核對為準；端點改了就改文件，不在程式裡猜一組舊欄位。
+
+未定、已知缺口同要跟進的事放在 [docs/BACKLOG.md](docs/BACKLOG.md)，唔係規格。

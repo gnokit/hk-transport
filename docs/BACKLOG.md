@@ -1,0 +1,103 @@
+# BACKLOG.md
+
+未確定、可能要處理、值得記住的事。這裡**不是規格**——規格在 [TASKS.md](TASKS.md)。每項有編號，處理完就刪走或標記為已解決。
+
+## 會阻礙第二階段
+
+### B-1 跨營辦商站點身份未做
+
+九巴 `8D804CFD9C7B9042`、城巴 `001027` 可以是同一個路邊站，但站號唔通用。結果：KMB→城巴 的轉車在圖上接唔上，而過海路線正正最常跨公司。
+**建議：** 用座標（約 30 米內）加名稱相似度做一份站點身份快照，好似 `mtr_exits` 咁；或者在 note 明講接唔上。現階段揀後者。
+
+### B-2 城巴冇 bulk 路線站表
+
+城巴只有 `route-stop/{route}/{direction}`，逐條線一個請求。要建立全網圖，等於幾百個請求。
+**建議：** 同 B-1 一齊考慮做快照，或者本階段只支援九巴路線搜尋。
+
+### B-3 新大嶼山 ETA 找唔到端點
+
+`route.php?action=detail` 交還 0 byte；`eta.php`、`route-stop.php` 都 404。NLB 只有路線表同站表（站表有車費）。
+**建議：** 查 NLB 的 OpenAPI spec 文件；搵唔到就明寫 NLB 冇下一班。
+
+### B-4 路線站表快照要人手重建
+
+`src/hk_transport/data/bus_route_stops.json`（694 KB，1,604 個路線變體）由 `scripts/build_bus_route_stops.py` 建立。超過 30 日會在 note 講，但唔會自動更新。
+**建議：** 開一個月一次的提醒，或 CI 定期重建並開 PR。順帶：`/route-stop` 要 `Referer`，重複下載會被限流 403。
+
+## 數據缺口（已知答唔到）
+
+### B-5 服務時間、班次密度、低地台：三份數據都冇
+
+第二階段的 #5（尾班車）、#8（幾密）、#10（輪椅）冇欄位支持。
+**建議：** 函式照寫，答「冇數據」，唔好留白或者用其他欄位推。
+
+### B-6 車費只有新大嶼山有
+
+九巴、城巴的路線表冇車費欄；NLB 站表有 `fare` 同 `fareHoliday`。
+**建議：** #6 只答 NLB；其他營辦商明講冇。
+
+## 已發現但未修
+
+### B-7 `as_hkt` 唔識 `YYYY/MM/DD HH:MM`
+
+`as_hkt("2026/10/29 12:51")` 交還 `"2026/10/29T12:51"`，唔係 ISO 8601。`mtr_bus` 的 `data_at` 正是這個格式。
+**影響：** 代理照 SKILL.md 引 `data_at` 時會引到一個唔標準的時間。
+**建議：** 在 `as_hkt` 先正規化斜線日期，或者由來源解析。
+
+### B-8 茘枝角 vs 荔枝角
+
+地鐵檔案用「茘」，市民日常寫「荔」。`mtr_lines --station 荔枝角` 找唔到。
+**建議：** 一個小別名表（荔枝角 → 茘枝角），唔好做模糊搜尋。
+
+### B-9 九巴路線表冇分九巴同龍運
+
+`kmb_routes()` 1,604 行冇營辦商欄，只在 note 講明两份混合。
+**建議：** 如果有更準的來源再補；暫時照 note。
+
+### B-10 循環線重複站未核實
+
+一條循環線的站序可能出現同一站兩次，會影響「A 至 B」的次序判斷。
+**建議：** 抽一條循環線（例如 K18）確認。
+
+### B-11 NLB `someDepartureObserveOnly` 未解析
+
+站表有這個欄位，未放入交還結果。
+
+## MTR 範圍
+
+### B-12 出口→地標（「去某座大廈行邊個出口」）
+
+MTR Mobile 有非公開 API（`azumtrmba001v.azurewebsites.net/api/signage`），一個請求交還 97 個站、8,277 個地標，帶座標同距離。但**唔係 data.gov.hk 開放數據**，頁面本身寫「部份資料由第三方提供」。
+**建議：** 先問 `opendata@mtr.com.hk` 可否發布；其間可以照 `mtr_exits` 做快照並標明非官方。
+
+### B-13 `/hk-transport` 斜線命令未註冊
+
+`SKILL.md` 的 description 有 `Also /hk-transport`，但倉庫、`~/.config/opencode`、`~/.opencode` 都冇對應命令檔。
+
+### B-14 `mtr_exits` 命令同程式庫唔一致
+
+命令一定要 `--station`；程式庫 `mtr_exits()` 唔給站名仍然交還全部（跨站比較要用）。已在 `TASKS.md` 同 `AGENTS.md` 寫明，屬設計而非缺陷。
+
+## 對外發布前
+
+### B-15 Commit 用咗私人電郵
+
+每個 commit 都係 `gnokit@gmail.com`。轉 public 之後人人可見。
+**建議：** 轉 public 之前決定用唔用 GitHub noreply，改就趁歷史仲短。
+
+### B-16 CI 徽章目前係靜態
+
+私有倉庫的 Actions 徽章唔會匿名提供，所以用靜態 shields 徽章。轉 public 之後換返真徽章（`README.md` 有 HTML 註解寫住點換）。
+
+### B-17 冇 lint／format 工具
+
+一致度靠人手。加 `ruff` 做 dev dependency 加 CI step 可以擋返一部分問題。
+
+### B-18 冇 `SECURITY.md`、`CONTRIBUTING.md`、dependabot
+
+公開之後想要的話補。這個專案特別需要講清楚點報「錯車費／過期數據」。
+
+### B-19 文件內的測試數字會漂移
+
+`README.md`、`README.zh.md`、`docs/TASKS.md` 都寫住測試數目，每次加測試都會過時。
+**建議：** 只寫約數，或者索性刪走數字，留 CI 徽章做訊號。
