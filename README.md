@@ -41,7 +41,7 @@ Phase 1 ships one entry script, `mtr.sh`. Every later phase adds a sibling scrip
 | 3 | Green minibus, red minibus | `minibus.sh` | built, under test |
 | — | One journey across every built mode | `journey.sh` | built, under test |
 | 4 | Tram, Peak Tram, ferry | `tram.sh`, `ferry.sh` | built, under test |
-| 5 | Taxi, cross-boundary and high-speed rail | `taxi.sh`, `rail.sh` | not started |
+| 5 | Taxi, cross-boundary and high-speed rail | — | **cancelled** — no usable open data |
 
 Every phase ships the same five things:
 
@@ -53,7 +53,7 @@ Every phase ships the same five things:
 
 What phase 1 built stays shared rather than copied: the result envelope (`_result`), the 30-day fetch cache (`_http`), cell reading (`_values`), address lookup (`als`), and the two Transport Department feeds (`notices`).
 
-Two honest caveats: nothing in phases 3–5 exists yet, and the order above is a plan, not a commitment. Phase 3 also has its ten target questions and data sources written down. Phase 2 is the exception in having code — its ten target citizen questions and the implementation tasks are written in [docs/TASKS.md](docs/TASKS.md), chosen from the questions people ask rather than from the datasets available. Its journey search returns several options with their cost, and lets the person choose; cost is transfers and stops, not minutes. Open questions and known gaps are kept in [docs/BACKLOG.md](docs/BACKLOG.md). KMB and ferry code already lives in [`hkdata`](https://github.com/gnokit/hkdata); those phases decide whether to move it or wrap it.
+Two honest caveats: phases 1–4 are built and phase 5 is cancelled for lack of open data, and the order above was a plan, not a commitment. Phase 3 also has its ten target questions and data sources written down. Phase 2 is the exception in having code — its ten target citizen questions and the implementation tasks are written in [docs/TASKS.md](docs/TASKS.md), chosen from the questions people ask rather than from the datasets available. Its journey search returns several options with their cost, and lets the person choose; cost is transfers and stops, not minutes. Open questions and known gaps are kept in [docs/BACKLOG.md](docs/BACKLOG.md). KMB and ferry code already lives in [`hkdata`](https://github.com/gnokit/hkdata); those phases decide whether to move it or wrap it.
 
 ## Quick start
 
