@@ -167,3 +167,32 @@ def test_citybus_eta_is_live(monkeypatch):
     result = bus_core.ctb_eta("001017", "1")
     assert result["update_frequency"] == "60s"
     assert seen[0][1]["cache"] is False
+
+
+def test_snapshot_is_read_without_network(monkeypatch):
+    def no_network(*args, **kwargs):
+        raise AssertionError("the snapshot must not call the network")
+
+    monkeypatch.setattr(bus_core, "fetch_json", no_network)
+    result = bus_core.kmb_route_stops_all()
+    stored = bus_core._load_snapshot()["variants"]
+    assert len(result["data"]) == sum(len(stops) for stops in stored.values())
+    assert result["data"][0].keys() == {"route", "direction", "service_type", "seq", "stop"}
+    assert "快照" in result["note"]
+    assert "超過 30 日" not in result["note"]
+
+
+def test_stale_snapshot_is_still_returned(monkeypatch):
+    snapshot = bus_core._load_snapshot()
+    old = {**snapshot, "retrieved_at": "2020-01-01T00:00:00+08:00"}
+    monkeypatch.setattr(bus_core, "_load_snapshot", lambda: old)
+    result = bus_core.kmb_route_stops_all()
+    assert result["data"]
+    assert "超過 30 日" in result["note"]
+
+
+def test_missing_snapshot_names_the_rebuild_script(monkeypatch, tmp_path):
+    monkeypatch.setattr(bus_core, "_snapshot_path", lambda: tmp_path / "missing.json")
+    with pytest.raises(MtrError) as caught:
+        bus_core.kmb_route_stops_all()
+    assert "build_bus_route_stops" in str(caught.value)

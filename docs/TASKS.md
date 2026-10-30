@@ -284,6 +284,8 @@
 | `kmb_stops()` | `/stop` | 全部巴士站 |
 | `kmb_stop(stop_id)` | `/stop/{id}` | 一個站 |
 | `kmb_route_stops(route, bound, service_type)` | `/route-stop/{route}/{bound}/{service_type}` | 一個方向的站序 |
+| `kmb_route_stops_all()` | **快照** `data/bus_route_stops.json`（由 `scripts/build_bus_route_stops.py` 重建） | 全部路線的站序，唔上網 |
+| `kmb_download_route_stops()` | `/route-stop`（3 MB，要 `Referer`，會被限流） | 重建快照用，工具唔會叫 |
 | `kmb_route_eta(route, service_type)` | `/route-eta/{route}/{service_type}` | 全線下一班 |
 | `kmb_stop_eta(stop_id, route, service_type)` | `/eta/{stop}/{route}/{service_type}` | 該站該線下一班 |
 | `ctb_routes()` | 城巴 `/v2/transport/citybus/route/CTB` | 全部路線 |

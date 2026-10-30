@@ -9,10 +9,13 @@ Every KMB and Citybus request needs a User-Agent, or the host answers 403.
 
 from __future__ import annotations
 
+import json
+from datetime import datetime, timedelta
+from pathlib import Path
 from urllib.parse import urlencode
 
 from hk_transport._http import fetch_json
-from hk_transport._result import MtrError, as_hkt, envelope
+from hk_transport._result import HKT, MtrError, as_hkt, envelope
 from hk_transport._values import blank, number
 
 KMB_DATASET = "hk-td-tis_21-etakmb"
@@ -24,6 +27,7 @@ NLB_BASE = "https://rt.data.gov.hk/v2/transport/nlb"
 
 STATIC_FREQ = "daily"
 ETA_FREQ = "60s"
+_SNAPSHOT_TTL = timedelta(days=30)
 _BOUNDS = {"o": "outbound", "outbound": "outbound", "i": "inbound", "inbound": "inbound"}
 
 
@@ -178,13 +182,13 @@ def kmb_route_stops(
     return _envelope(KMB_DATASET, url, payload, retrieved_at, rows, STATIC_FREQ)
 
 
-def kmb_all_route_stops() -> dict:
-    """Every KMB and LWB route-stop row in one table.
+def kmb_download_route_stops() -> dict:
+    """Every KMB and LWB route-stop row, fetched live. Rebuilds the snapshot.
 
     Endpoint `https://data.etabus.gov.hk/v1/transport/kmb/route-stop`, about
-    3 MB. One request, instead of one per route variant. This endpoint answers
-    403 unless the request carries a `Referer` header.
-    Answers: which routes call at a given stop, and in what order.
+    3 MB and 36,000 rows. This endpoint answers 403 unless the request carries
+    a `Referer` header, and the host throttles repeated downloads. Prefer
+    `kmb_route_stops_all`, and rebuild rarely.
     """
     url = f"{KMB_BASE}/route-stop"
     payload, retrieved_at = fetch_json(
@@ -192,6 +196,78 @@ def kmb_all_route_stops() -> dict:
     )
     rows = [_route_stop_row(row) for row in payload.get("data") or []]
     return _envelope(KMB_DATASET, url, payload, retrieved_at, rows, STATIC_FREQ)
+
+
+def _snapshot_path() -> Path:
+    return Path(__file__).resolve().parent / "data" / "bus_route_stops.json"
+
+
+def _load_snapshot() -> dict:
+    path = _snapshot_path()
+    endpoint = f"{KMB_BASE}/route-stop"
+    if not path.is_file():
+        raise MtrError(
+            "找不到巴士站序快照，請跑 scripts/build_bus_route_stops.py",
+            dataset_id=KMB_DATASET,
+            endpoint=endpoint,
+        )
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise MtrError(str(exc), dataset_id=KMB_DATASET, endpoint=endpoint) from exc
+    if not isinstance(payload, dict) or not isinstance(payload.get("variants"), dict):
+        raise MtrError(
+            "巴士站序快照不是預期的 JSON", dataset_id=KMB_DATASET, endpoint=endpoint
+        )
+    return payload
+
+
+def _stale(retrieved_at: str) -> bool:
+    fetched = datetime.fromisoformat(retrieved_at)
+    if fetched.tzinfo is None:
+        fetched = fetched.replace(tzinfo=HKT)
+    return datetime.now(HKT) - fetched >= _SNAPSHOT_TTL
+
+
+def kmb_route_stops_all() -> dict:
+    """Every KMB and LWB stop sequence, read from the bundled snapshot.
+
+    No network call. Each route variant is stored as its stops in order, keyed
+    `route|direction|service_type`. Rebuild with
+    `scripts/build_bus_route_stops.py`; after 30 days the note says so and the
+    data is still returned.
+    Answers: which routes call at a given stop, and in what order.
+    """
+    snapshot = _load_snapshot()
+    rows = []
+    for key, stops in snapshot["variants"].items():
+        route, direction, service = key.split("|")
+        for index, stop in enumerate(stops, start=1):
+            rows.append(
+                {
+                    "route": route,
+                    "direction": direction,
+                    "service_type": service,
+                    "seq": index,
+                    "stop": stop,
+                }
+            )
+    retrieved_at = snapshot.get("retrieved_at")
+    note = (
+        "巴士站序是九巴／龍運完整路線站表的快照，查詢時不重新下載。"
+        "路線改動後要跑 scripts/build_bus_route_stops.py 重建。"
+    )
+    if isinstance(retrieved_at, str) and _stale(retrieved_at):
+        note += "這份快照已超過 30 日。"
+    return envelope(
+        dataset_id=KMB_DATASET,
+        endpoint=f"{KMB_BASE}/route-stop",
+        retrieved_at=retrieved_at if isinstance(retrieved_at, str) else None,
+        data_at=snapshot.get("data_at"),
+        update_frequency=STATIC_FREQ,
+        data=rows,
+        note=note,
+    )
 
 
 def kmb_route_eta(route: str, service_type: str = "1") -> dict:
