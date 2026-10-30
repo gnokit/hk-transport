@@ -22,6 +22,7 @@ import json
 
 from hk_transport import (
     address_lookup,
+    place_search,
     light_rail,
     light_rail_next,
     mtr_airport_express_fare,
@@ -55,6 +56,7 @@ class Arg:
     nargs: str | None = None
     kind: type | None = None
     required: bool = False
+    default: object | None = None
 
     @property
     def label(self) -> str:
@@ -232,6 +234,24 @@ def _commands() -> tuple[Command, ...]:
             (Arg("route", "Route id, for example K52.", metavar="route"),),
         ),
         Command(
+            "place_search",
+            "Find a place, address, or facility on the map",
+            (
+                "Searches addresses, building names, place names and facility names.",
+                "Returns district and coordinates. This is how a name like 南生圍 gets a point.",
+                "Results are ranked by relevance, not by name match; a facility at the place can outrank the place.",
+                "It does not decide which bus stop to use.",
+            ),
+            lambda ns: place_search(
+                " ".join(part.strip() for part in ns.query if part.strip()),
+                limit=ns.limit,
+            ),
+            (
+                Arg("query", "Place, address, or facility name. Extra words are joined.", metavar="query", nargs="+"),
+                Arg("limit", "Maximum number of results. Default 5.", flag="--limit", metavar="count", kind=int, default=5),
+            ),
+        ),
+        Command(
             "address_lookup",
             "Match an address or place name",
             (
@@ -360,7 +380,11 @@ def _parser() -> argparse.ArgumentParser:
         item = sub.add_parser(command.name, add_help=False, usage=command.synopsis)
         for arg in command.args:
             if arg.flag:
-                kwargs: dict = {"help": arg.text, "required": arg.required}
+                kwargs: dict = {
+                    "help": arg.text,
+                    "required": arg.required,
+                    "default": arg.default,
+                }
                 if arg.kind is not None:
                     kwargs["type"] = arg.kind
                 item.add_argument(arg.flag, **kwargs)

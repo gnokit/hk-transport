@@ -31,17 +31,22 @@ bash ${SKILL_DIR}/bus.sh      # franchised buses
 
 No arguments and `help` print the same page: a short introduction, then one line per command. Read `help <command>` when its arguments are not obvious. stdout of a command is JSON.
 
-If you do not know a station, stop or line name, look it up first. MTR: `mtr_lines --line` or `--station`. Bus: `bus_stops_near` for stops near a place, `bus_route` for the stops on a route. Names must match the official spelling exactly — the MTR file spells 茘枝角 with 茘, not 荔. A station id (`2`) or code (`ADM`) also works for MTR; a stop id works for buses.
+If you do not know a station, stop, line or place name, look it up first. `bash ${SKILL_DIR}/mtr.sh place_search <name>` turns a place or facility name into a point. MTR: `mtr_lines --line` or `--station`. Bus: `bus_stops_near` for stops near a place, `bus_route` for the stops on a route. Names must match the official spelling exactly — the MTR file spells 茘枝角 with 茘, not 荔. A station id (`2`) or code (`ADM`) also works for MTR; a stop id works for buses.
 
 ## When a name does not match
 
-A command may answer 「找不到車站：…」, 「找不到路線：…」, 「400 米內找不到巴士站」, or 「這個站不在這條線上。」 That means the input did not match the published name — not that the place has no service.
+A command may answer 「找不到車站：…」, 「找不到路線：…」, 「400 米內沒有九巴／龍運站。最近的是…」, or 「這個站不在這條線上。」 That means the input did not match the published name — not that the place has no service.
 
 - Do not guess a similar place, and do not re-run the same input expecting a different result.
 - Look the name up with `mtr_lines` or `bus_stops_near`, then run the command again.
 - Check the line as well as the station: a correct station on the wrong line fails the same way.
 - Common traps: 茘枝角 is spelled with 茘; English names use the published form (`Tsim Sha Tsui`, `AsiaWorld-Expo`); 中環, 香港 and 機場快線香港站 are names for one interchange area.
 - If it still does not resolve, say the skill cannot find it. Do not substitute a nearby place.
+
+Place names are resolved by the Lands Department place search, which knows places and facilities, not just buildings. Two consequences:
+
+- A district name (元朗, 尖沙咀) becomes **one point**, not the whole district. Say which point was used, and do not treat it as covering the district.
+- When the answer names the nearest stop and a straight-line distance, that means **no bus stop is inside the walking radius**. Report it as it stands: the place has no bus stop that close, and the nearest one is that far away. Never quietly use the further stop.
 
 ## When a name matches more than one station
 

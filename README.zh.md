@@ -111,6 +111,7 @@ bash mtr.sh mtr_next_train 港島線 金鐘                # 問一條問題
 
 | 指令 | 回答 |
 |---|---|
+| `place_search` | 地名、大廈或設施在圖上的位置同座標 |
 | `address_lookup` | 地名或地址的匹配結果同座標 |
 | `special_traffic_news` | 運輸署現時的全港特別交通消息 |
 | `special_traffic_arrangements` | 預先公布的特別交通及運輸安排 |

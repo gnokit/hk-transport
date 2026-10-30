@@ -371,3 +371,20 @@
 ### T2.7 完成標準
 
 十條問題每一條都答得到，或者明講答唔到；每個答案帶資料集、端點、數據時間；`bus_journey` 交還多個方案而唔排名；跨營辦商接唔上要照講；離線測試通過；三個營辦商各有一個 live 抽樣。
+
+### T2.8 地點解析 — `src/hk_transport/geocode.py`（2026-10-30 已完成）
+
+測試發現 `als.py` 解不到地名：查「南生圍」得到中西區的「南生大廈」，於是答案去了堅尼地城。
+
+**改用：** 地政總署 GeoInfo Map 的地點搜尋 `hk-landsd-openmap-development-location-search-api`，端點 `https://www.map.gov.hk/gs/api/v1.0.0/locationSearch`，參數 `q`。它搜地址、大廈名、**地名**、設施名。
+
+**`place_search(query, limit=5)`：**
+
+- 回應只有香港1980方格網 `x`、`y`；用 pyproj（EPSG:2326 → EPSG:4326）轉經緯度，兩者都交還。
+- 不快取；官方要求唔可以短時間大量請求。
+- `bus.py::_place` 的次序：站名或站號完全相符 → `place_search` → `als.address_lookup`（門牌後備）。
+- 名字吻合度再排一次（完全相符 → 前綴 → 包含 → 其餘），因為同名設施（AED、智郵站）可以排在地方本身前面。
+
+**同時改咗：** 步行半徑內冇站時，note 講最近那個站同直線距離，例如「400 米內沒有九巴／龍運站。最近的是德業街 (YL207)，直線 1462 米。」`bus_journey`、`bus_direct`、`bus_eta`、`bus_stops_near` 四處一致。
+
+**測試：** `tests/test_geocode.py`（方格轉經緯、URL 編碼、排序警告、缺座標、limit、空查詢、非陣列回應）；`tests/test_bus.py` 加四條（地名用搜尋結果、跨區候選不隱藏、設施名不贏過地方本身、搜尋空時退到 ALS）。

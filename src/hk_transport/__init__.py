@@ -14,6 +14,7 @@ from hk_transport.bus import (
     bus_stops_near,
 )
 from hk_transport.exits import mtr_exits
+from hk_transport.geocode import place_search
 from hk_transport.mtr import (
     light_rail,
     light_rail_next,
@@ -52,6 +53,7 @@ __all__ = [
     "mtr_journey",
     "mtr_lines",
     "mtr_next_train",
+    "place_search",
     "mtr_ride_estimate",
     "special_traffic_arrangements",
     "special_traffic_news",

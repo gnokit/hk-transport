@@ -111,6 +111,7 @@ Each command answers one kind of question. These are phase 1.
 
 | Command | Answers |
 |---|---|
+| `place_search` | Find a place, building or facility on the map, with coordinates |
 | `address_lookup` | Match a place name or address, with coordinates |
 | `special_traffic_news` | Current territory-wide traffic incidents |
 | `special_traffic_arrangements` | Traffic arrangements published in advance |
