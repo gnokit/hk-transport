@@ -100,17 +100,31 @@ def place(query: str, stops: dict[str, dict]) -> tuple[dict | None, str | None]:
     ]
     if exact and exact[0]["latitude"] is not None:
         row = exact[0]
-        return (
-            {
-                "query": text,
-                "resolved_as": "stop",
-                "name_zh": row["name_zh"],
-                "name_en": row["name_en"],
-                "latitude": row["latitude"],
-                "longitude": row["longitude"],
-            },
-            None,
-        )
+        point = {
+            "query": text,
+            "resolved_as": "stop",
+            "name_zh": row["name_zh"],
+            "name_en": row["name_en"],
+            "latitude": row["latitude"],
+            "longitude": row["longitude"],
+        }
+        # A name can belong to more than one stop: opposite sides of a road, or
+        # a tram stop pair. Say so instead of quietly narrowing to the first.
+        other = [
+            item
+            for item in exact[1:]
+            if item["latitude"] is not None
+            and distance(
+                row["latitude"], row["longitude"], item["latitude"], item["longitude"]
+            )
+            > 50
+        ]
+        if other:
+            point["also_matched"] = [
+                {"name_zh": item["name_zh"], "latitude": item["latitude"], "longitude": item["longitude"]}
+                for item in other[:3]
+            ]
+        return point, None
     found = geocode.place_search(text)
     matches = [row for row in (found["data"] or []) if row["latitude"] is not None]
     if matches:

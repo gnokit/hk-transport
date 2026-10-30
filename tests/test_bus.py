@@ -264,3 +264,14 @@ def test_address_lookup_is_the_fallback_when_the_place_search_is_empty(monkeypat
     assert note is None
     assert point["resolved_as"] == "address"
     assert point["district_zh"] == "元朗區"
+
+
+def test_a_stop_name_that_matches_two_places_is_not_narrowed_silently(monkeypatch):
+    wide = [
+        {"stop": "X1", "name_zh": "同名站", "name_en": "Same", "latitude": 22.0, "longitude": 114.0},
+        {"stop": "X2", "name_zh": "同名站", "name_en": "Same", "latitude": 22.1, "longitude": 114.1},
+    ]
+    point, note = _places.place("同名站", {row["stop"]: row for row in wide})
+    assert note is None
+    assert point["name_zh"] == "同名站"
+    assert len(point["also_matched"]) == 1
