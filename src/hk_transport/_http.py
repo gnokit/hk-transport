@@ -47,14 +47,18 @@ def _fresh(retrieved_at: str) -> bool:
     return datetime.now(HKT) - fetched < _CACHE_TTL
 
 
-def fetch_text(
+def cached_file(
     url: str,
     *,
     dataset_id: str,
     timeout: float = 30,
     headers: dict | None = None,
-) -> tuple[str, str]:
-    """Return the CSV text and when it was downloaded. Reuse a copy younger than 30 days."""
+) -> tuple[Path, str]:
+    """Return the cached body file and when it was downloaded.
+
+    Large feed files are read from this path instead of being loaded into a
+    string first. Reuses a copy younger than 30 days.
+    """
     digest = hashlib.sha256(url.encode("utf-8")).hexdigest()
     directory = cache_dir()
     body_path = directory / f"{digest}.body"
@@ -62,7 +66,7 @@ def fetch_text(
     if body_path.is_file() and meta_path.is_file():
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         if meta.get("url") == url and _fresh(meta["retrieved_at"]):
-            return body_path.read_text(encoding="utf-8"), meta["retrieved_at"]
+            return body_path, meta["retrieved_at"]
     try:
         response = requests.get(
             url, timeout=timeout, headers={**USER_AGENT, **(headers or {})}
@@ -80,7 +84,21 @@ def fetch_text(
         json.dumps({"url": url, "retrieved_at": retrieved_at}, ensure_ascii=False),
         encoding="utf-8",
     )
-    return text, retrieved_at
+    return body_path, retrieved_at
+
+
+def fetch_text(
+    url: str,
+    *,
+    dataset_id: str,
+    timeout: float = 30,
+    headers: dict | None = None,
+) -> tuple[str, str]:
+    """Return the CSV text and when it was downloaded. Reuse a copy younger than 30 days."""
+    path, retrieved_at = cached_file(
+        url, dataset_id=dataset_id, timeout=timeout, headers=headers
+    )
+    return path.read_text(encoding="utf-8"), retrieved_at
 
 
 def fetch_json(

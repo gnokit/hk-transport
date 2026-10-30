@@ -8,6 +8,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "gnokit" }]
 dependencies = [
+    "ijson>=3.6.0",
     "networkx>=3.7",
     "requests>=2.34.2",
 ]

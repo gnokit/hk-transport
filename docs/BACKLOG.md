@@ -31,10 +31,18 @@
 第二階段的 #5（尾班車）、#8（幾密）、#10（輪椅）冇欄位支持。
 **建議：** 函式照寫，答「冇數據」，唔好留白或者用其他欄位推。
 
-### B-6 車費只有新大嶼山有
+### B-6 車費同全程時間：有數據，但唔在 ETA 數據集
 
-九巴、城巴的路線表冇車費欄；NLB 站表有 `fare` 同 `fareHoliday`。
-**建議：** #6 只答 NLB；其他營辦商明講冇。
+原本以為九巴、城巴冇車費。實際係**另一個數據集**有：`hk-td-tis_23-routes-fares-geojson`（Routes and fares of public transport），`JSON_BUS.json` 75 MB，每兩週更新，每條線有 `fullFare` 同 `journeyTime`（2026-10-30 已接入 `bus_core.td_bus_fares()`）。
+
+限制仍然存在：**只有成人全程價**，冇分段收費、冇小童／長者／轉乘優惠；`journeyTime` 係全程，唔係分段。
+
+**建議：** 分段收費同優惠如果要做，要另找來源；現階段照講「成人全程價」。
+
+### B-24 `locEndNameE` 有時夾住一句英文提示
+
+部分路線的目的地名稱帶住付款提示，例如 B1：`LOK MA CHAU STATION ‧ FUTIAN PORT Please inquire with the operator about the payment arrangement of the two-way fare on this route.`
+**已處理：** `td_bus_fares()` 用 `_station_name()` 將站名同提示分開，提示放 `remark`。其他欄位有冇同類情況未核實。
 
 ## 已發現但未修
 

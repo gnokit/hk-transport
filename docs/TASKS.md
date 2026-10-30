@@ -266,7 +266,7 @@
 | 城巴 | 410 條路線；站序逐線一個方向取得，**冇 bulk** |
 | 新大嶼山 | 66 條路線；站表**逐站有 `fare` 同 `fareHoliday`** |
 | 新大嶼山 ETA | **找唔到可用端點**，本階段不做 |
-| 車費 | 只有新大嶼山有；九巴、城巴的數據冇車費欄 → **#6 只答得到新大嶼山** |
+| 車費 | 只有新大嶼山站表有 `fare`；九巴、城巴的 ETA 數據集冇車費欄。**另有 `hk-td-tis_23-routes-fares-geojson` 提供成人全程車費同全程時間**，2026-10-30 已接入 |
 | 服務時間、班次密度、低地台 | 三份數據都**冇** → **#5、#8、#10 答「冇數據」**，唔可以估 |
 | 跨營辦商站號 | 唔通用（九巴 `8D804CFD9C7B9042`、城巴 `001027`）→ 轉車接唔上，要照講 |
 | 循環線重複站 | 未核實 |
@@ -296,6 +296,7 @@
 | `nlb_routes()` | 新大嶼山 `route.php?action=list` | 全部路線 |
 | `nlb_stops(route_id)` | `stop.php?action=list&routeId=` | 一個方向的站序 |
 | `nlb_eta(route_id, stop_id)` | 待核實 | 下一班 |
+| `td_bus_fares()` | `hk-td-tis_23-routes-fares-geojson` `JSON_BUS.json`（75 MB，串流讀取） | 成人全程車費同全程時間 |
 
 ### T2.2 `src/hk_transport/_graph.py` — 共用的尋路層（2026-10-30 已完成）
 
@@ -327,7 +328,7 @@
 | 3 | 我附近有邊幾個站？ | `bus_stops_near(place, limit=5)` | `als` + `stops` |
 | 4 | 由 A 去 B 有冇一程過？ | `bus_direct(origin_stop, destination_stop)` | `route_stops`，只查同一程同一方向 |
 | 5 | 仲有冇車？尾班車幾點？ | `bus_service_hours(route)` | `route`（待核實） |
-| 6 | 幾多錢？ | `bus_fare(route)` | `route`（待核實） |
+| 6 | 幾多錢？ | `bus_fare(route, company=None)` | `td_bus_fares()` — 已寫 2026-10-30 |
 | 7 | 下一班幾時到？ | `bus_eta(route=None, stop=None)` | `route_eta` / `stop_eta` |
 | 8 | 幾密？循環／特快／機場？ | `bus_frequency(route)` | `route` + 實時班距 |
 | 9 | 今日有冇改道／暫停？ | `bus_disruption(route)` | `notices.special_traffic_news` |

@@ -196,3 +196,51 @@ def test_missing_snapshot_names_the_rebuild_script(monkeypatch, tmp_path):
     with pytest.raises(MtrError) as caught:
         bus_core.kmb_route_stops_all()
     assert "build_bus_route_stops" in str(caught.value)
+
+
+def test_td_fares_stream_the_geojson_and_keep_one_row_per_variant(monkeypatch, tmp_path):
+    import json
+
+    path = tmp_path / "bus.json"
+    features = [
+        {
+            "properties": {
+                "companyCode": "KMB",
+                "routeNameE": "B1",
+                "routeType": 1,
+                "serviceMode": "R",
+                "fullFare": 15.3,
+                "journeyTime": 50,
+                "locStartNameC": "天慈",
+                "locStartNameE": "TIN TSZ",
+                "locEndNameC": "落馬洲站",
+                "locEndNameE": "LOK MA CHAU STATION Please inquire with the operator.",
+                "lastUpdateDate": "2026-05-22T00:00:00",
+                "stopSeq": 1,
+                "stopId": "A",
+            }
+        },
+        {
+            "properties": {
+                "companyCode": "KMB",
+                "routeNameE": "B1",
+                "routeType": 1,
+                "serviceMode": "R",
+                "fullFare": 15.3,
+                "journeyTime": 50,
+                "locEndNameE": "DUPLICATE STOP ROW",
+                "stopSeq": 2,
+                "stopId": "B",
+            }
+        },
+    ]
+    path.write_text(json.dumps({"type": "FeatureCollection", "features": features}), encoding="utf-8")
+    monkeypatch.setattr(bus_core, "cached_file", lambda url, **kw: (path, "2026-10-30T00:00:00+08:00"))
+    result = bus_core.td_bus_fares()
+    assert len(result["data"]) == 1
+    row = result["data"][0]
+    assert row["fare"] == 15.3
+    assert row["journey_time_minutes"] == 50.0
+    assert row["dest_en"] == "LOK MA CHAU STATION"
+    assert row["remark"] == "Please inquire with the operator."
+    assert result["data_at"] == "2026-05-22T00:00:00+08:00"

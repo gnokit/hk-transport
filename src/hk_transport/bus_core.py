@@ -14,7 +14,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
 
-from hk_transport._http import fetch_json
+import ijson
+
+from hk_transport._http import cached_file, fetch_json
 from hk_transport._result import HKT, MtrError, as_hkt, envelope
 from hk_transport._values import blank, number
 
@@ -24,6 +26,8 @@ CTB_DATASET = "ctb-eta-transport-realtime-eta"
 CTB_BASE = "https://rt.data.gov.hk/v2/transport/citybus"
 NLB_DATASET = "nlb-bus-nlb-bus-service-v2"
 NLB_BASE = "https://rt.data.gov.hk/v2/transport/nlb"
+TD_FARES_DATASET = "hk-td-tis_23-routes-fares-geojson"
+TD_BUS_FARES_URL = "https://static.data.gov.hk/td/routes-fares-geojson/JSON_BUS.json"
 
 STATIC_FREQ = "daily"
 ETA_FREQ = "60s"
@@ -442,3 +446,75 @@ def nlb_stops(route_id: str) -> dict:
         if isinstance(row, dict)
     ]
     return _envelope(NLB_DATASET, url, payload, retrieved_at, rows, STATIC_FREQ)
+
+
+def _station_name(value: object) -> tuple[str | None, str | None]:
+    """Split a published stop name from a sentence appended to it.
+
+    Some routes carry a payment remark inside `locEndNameE`, for example
+    "LOK MA CHAU STATION ‧ FUTIAN PORT Please inquire with the operator ...".
+    """
+    text = blank(value)
+    if text is None:
+        return None, None
+    marker = text.find(" Please ")
+    if marker == -1:
+        return text, None
+    return text[:marker].strip(), text[marker + 1 :].strip()
+
+
+def td_bus_fares() -> dict:
+    """Adult route fare and whole-route journey time for franchised buses.
+
+    Dataset `hk-td-tis_23-routes-fares-geojson`, endpoint
+    `https://static.data.gov.hk/td/routes-fares-geojson/JSON_BUS.json`.
+    About 75 MB and 56,000 stop features, read with a streaming parser and
+    cached for 30 days.
+
+    `fare` is the adult full fare for boarding that route, not a section fare.
+    `journey_time_minutes` is the whole route, not the segment a caller rides.
+    Answers: what this route costs, and how long its full run is published as.
+    """
+    path, retrieved_at = cached_file(TD_BUS_FARES_URL, dataset_id=TD_FARES_DATASET)
+    seen: dict[tuple, dict] = {}
+    updated = None
+    with path.open("rb") as handle:
+        for feature in ijson.items(handle, "features.item"):
+            props = feature.get("properties") or {}
+            key = (
+                blank(props.get("companyCode")),
+                blank(props.get("routeNameE")),
+                props.get("routeType"),
+                blank(props.get("serviceMode")),
+            )
+            updated = updated or blank(props.get("lastUpdateDate"))
+            if key in seen:
+                continue
+            end_en, remark = _station_name(props.get("locEndNameE"))
+            start_en, _ = _station_name(props.get("locStartNameE"))
+            seen[key] = {
+                "company": key[0],
+                "route": key[1],
+                "route_type": key[2],
+                "service_mode": key[3],
+                "origin_zh": blank(props.get("locStartNameC")),
+                "origin_en": start_en,
+                "dest_zh": blank(props.get("locEndNameC")),
+                "dest_en": end_en,
+                "fare": number(props.get("fullFare")),
+                "journey_time_minutes": number(props.get("journeyTime")),
+                "remark": remark,
+            }
+    note = (
+        "車費是成人全程價，逐程上車計，未計轉乘優惠。"
+        "journey_time_minutes 是整條路線的公布全程時間，不是分段行車時間。"
+    )
+    return envelope(
+        dataset_id=TD_FARES_DATASET,
+        endpoint=TD_BUS_FARES_URL,
+        retrieved_at=retrieved_at,
+        data_at=as_hkt(updated),
+        update_frequency="biweekly",
+        data=list(seen.values()),
+        note=note,
+    )

@@ -261,3 +261,36 @@ def bus_journey(
         },
         note=note,
     )
+
+
+FARE_NOTE = (
+    "車費是成人全程價，逐程上車計，未計轉乘優惠。"
+    "journey_time_minutes 是整條路線的公布全程時間，不是分段行車時間。"
+)
+
+
+def bus_fare(route: str, company: str | None = None) -> dict:
+    """一條專營巴士路線的成人車費同公布全程時間。
+
+    資料集 `hk-td-tis_23-routes-fares-geojson`，端點
+    `https://static.data.gov.hk/td/routes-fares-geojson/JSON_BUS.json`。
+
+    用法：`bus_fare("B1")`，`bus_fare("B1", company="KMB")`。
+    市民會問：搭呢條線幾多錢？全程要幾耐？
+
+    交還這條線每一個變體（方向、服務類型）的成人車費同全程時間。
+    車費唔係分段收費；全程時間唔係你坐嗰一段的時間。同一條線有幾種行法時，
+    會逐個列出，唔會替你揀。
+    """
+    fares = bus_core.td_bus_fares()
+    text = route.strip().upper()
+    wanted = company.strip().upper() if company else None
+    matches = [
+        row
+        for row in fares["data"]
+        if (row["route"] or "").upper() == text
+        and (wanted is None or (row["company"] or "").upper() == wanted)
+    ]
+    if not matches:
+        return compose([fares], None, note=f"車費表沒有這條路線：{route}")
+    return compose([fares], {"route": text, "variants": matches}, note=FARE_NOTE)

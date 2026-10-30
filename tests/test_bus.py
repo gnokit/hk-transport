@@ -117,3 +117,23 @@ def test_leg_stop_counts_are_segments(monkeypatch):
     wire(monkeypatch, ROUTES)
     option = bus.bus_journey("甲站", "乙站")["data"]["options"][0]
     assert option["stops"] == sum(leg["stops"] for leg in option["legs"])
+
+
+def test_bus_fare_lists_every_variant(monkeypatch):
+    rows = [
+        {"company": "KMB", "route": "B1", "route_type": 1, "service_mode": "R", "fare": 15.3, "journey_time_minutes": 50.0},
+        {"company": "KMB", "route": "B1", "route_type": 1, "service_mode": "T", "fare": 15.3, "journey_time_minutes": 77.0},
+    ]
+    monkeypatch.setattr(bus.bus_core, "td_bus_fares", lambda: envelope(rows))
+    result = bus.bus_fare("b1")
+    assert result["data"]["route"] == "B1"
+    assert len(result["data"]["variants"]) == 2
+    assert "成人全程價" in result["note"]
+    assert "不是分段" in result["note"]
+
+
+def test_bus_fare_for_an_unknown_route_says_so(monkeypatch):
+    monkeypatch.setattr(bus.bus_core, "td_bus_fares", lambda: envelope([]))
+    result = bus.bus_fare("999")
+    assert result["data"] is None
+    assert "999" in result["note"]
