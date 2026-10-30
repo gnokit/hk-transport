@@ -57,8 +57,8 @@ def _matches_station(row: dict, query: str) -> bool:
     return query in {str(item) for item in row.get("station_ids") or []}
 
 
-def mtr_exits(station: str | None = None) -> dict:
-    """交還重鐵站出入口座標。
+def mtr_exits(station: str) -> dict:
+    """交還一個重鐵站的出入口座標。
 
     資料集 `hk-landsd-openmap-development-location-search-api`。
     端點 `https://www.map.gov.hk/gs/api/v1.0.0/locationSearch`。
@@ -72,13 +72,18 @@ def mtr_exits(station: str | None = None) -> dict:
     出入口幾乎不變。這份快照約一年內重用，查詢時不重新下載，也不寫入 `.cache/`。
     超過一年仍交還同一份，並在 note 說明。
 
-    用法：`mtr_exits("金鐘")`。`mtr.sh` 一定要給站名；不給就交還整份快照，供跨站比較用。
+    用法：`mtr_exits("金鐘")`。站名一定要給，可以是中文、英文、車站編號或代碼；
+    空白會報錯。整份快照只在模組內部用，不經這個函式交還。
     市民會問：這個站有哪些出口？出口的座標是多少？
 
     這不是港鐵公布的出口名冊。輕鐵站不在這份表。沒有出口編號的出入口，`exit` 留空。
     青衣、九龍、香港在機場快線和東涌線各有一個車站編號，出入口是同一組，`station_ids` 兩個都列。
     """
-    station = (station or "").strip() or None
+    station = (station or "").strip()
+    if not station:
+        raise MtrError(
+            "要給一個站名", dataset_id=DATASET_ID, endpoint=SEARCH_ENDPOINT
+        )
     snapshot = _load()
     retrieved_at = snapshot.get("retrieved_at")
     if not isinstance(retrieved_at, str) or not retrieved_at:

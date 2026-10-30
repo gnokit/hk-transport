@@ -74,9 +74,10 @@ MTR Mobile 有非公開 API（`azumtrmba001v.azurewebsites.net/api/signage`）�
 
 `SKILL.md` 的 description 有 `Also /hk-transport`，但倉庫、`~/.config/opencode`、`~/.opencode` 都冇對應命令檔。
 
-### B-14 `mtr_exits` 命令同程式庫唔一致
+### B-14 最近車站的組合已無公開入口
 
-命令一定要 `--station`；程式庫 `mtr_exits()` 唔給站名仍然交還全部（跨站比較要用）。已在 `TASKS.md` 同 `AGENTS.md` 寫明，屬設計而非缺陷。
+`mtr_exits()` 現在同命令一致，一定要給站名；唔給會報錯。日後要做「最近車站」，只可以喺 `exits` 模組內部用 `_load()`，或者另開一個 `mtr_nearest` 命令。
+**建議：** 暫時唔需要；真要做就開新命令，唔好放寬 `mtr_exits`。
 
 ## 對外發布前
 

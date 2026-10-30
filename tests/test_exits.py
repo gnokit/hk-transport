@@ -23,7 +23,7 @@ def test_exit_reader_does_not_fetch():
 
 
 def test_admiralty_c1_keeps_grid_and_converted_wgs84():
-    result = mtr_exits()
+    result = mtr_exits("金鐘")
     assert result["dataset_id"] == [DATASET_ID, TRANSFORM_DATASET_ID]
     assert result["endpoint"] == [SEARCH_ENDPOINT, TRANSFORM_ENDPOINT]
     assert result["data_at"] is None
@@ -42,11 +42,11 @@ def test_admiralty_c1_keeps_grid_and_converted_wgs84():
 
 
 def test_snapshot_uses_official_station_names():
-    rows = mtr_exits()["data"]
+    rows = exits._load()["exits"]
     names = {item["station_zh"] for item in rows}
     assert len(rows) == 608
     assert len(names) == 97
-    assert "這次沒有進出口" not in mtr_exits()["note"]
+    assert "這次沒有進出口" not in mtr_exits("金鐘")["note"]
     assert "尖東" in names
     assert "荃灣西" in names
     assert "茘枝角" in names
@@ -58,7 +58,7 @@ def test_snapshot_uses_official_station_names():
 
 
 def test_access_without_a_letter_keeps_a_null_exit():
-    row = next(item for item in mtr_exits()["data"] if item["name_zh"] == "港鐵尖東站進出口")
+    row = next(item for item in exits._load()["exits"] if item["name_zh"] == "港鐵尖東站進出口")
     assert row["station_zh"] == "尖東"
     assert row["exit"] is None
     assert row["latitude"] is not None
@@ -66,7 +66,7 @@ def test_access_without_a_letter_keeps_a_null_exit():
 
 
 def test_lo_wu_uses_the_published_exit_word():
-    row = next(item for item in mtr_exits()["data"] if item["station_zh"] == "羅湖" and item["exit"] == "A")
+    row = next(item for item in exits._load()["exits"] if item["station_zh"] == "羅湖" and item["exit"] == "A")
     assert row["name_zh"] == "港鐵羅湖站-A出口"
     assert row["name_en"] == "MTR Lo Wu Station-A Exit"
 
@@ -86,7 +86,7 @@ def test_unknown_station_does_not_invent_exits():
 
 
 def test_shared_stations_list_both_line_ids():
-    rows = mtr_exits()["data"]
+    rows = exits._load()["exits"]
 
     def ids(name: str) -> list[str]:
         return next(item["station_ids"] for item in rows if item["station_zh"] == name)
@@ -105,8 +105,8 @@ def test_snapshot_older_than_a_year_is_still_returned(monkeypatch):
         "missing_stations": ["顯徑"],
     }
     monkeypatch.setattr(exits, "_load", lambda: stale)
-    result = exits.mtr_exits()
-    assert result["data"] == stale["exits"]
+    result = exits.mtr_exits("金鐘")
+    assert {row["station_zh"] for row in result["data"]} == {"金鐘"}
     assert result["retrieved_at"] == "2020-01-01T00:00:00+08:00"
     assert "已超過一年" in result["note"]
     assert "顯徑" in result["note"]
@@ -115,7 +115,7 @@ def test_snapshot_older_than_a_year_is_still_returned(monkeypatch):
 def test_missing_snapshot_names_the_dataset(monkeypatch, tmp_path):
     monkeypatch.setattr(exits, "_path", lambda: tmp_path / "missing.json")
     with pytest.raises(MtrError) as caught:
-        mtr_exits()
+        mtr_exits("金鐘")
     assert caught.value.dataset_id == DATASET_ID
     assert caught.value.endpoint == SEARCH_ENDPOINT
 
@@ -140,3 +140,10 @@ def test_live_admiralty_c1_grid_still_matches_the_snapshot():
     item = next(row for row in response.json() if row.get("nameZH") == "港鐵金鐘站-C1進出口")
     assert item["x"] == 835020.0
     assert item["y"] == 815518.0
+
+
+def test_a_blank_station_is_an_error():
+    with pytest.raises(MtrError) as caught:
+        mtr_exits("   ")
+    assert caught.value.dataset_id == DATASET_ID
+    assert "站名" in str(caught.value)
