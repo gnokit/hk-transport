@@ -52,7 +52,7 @@
 
 第一階段建好的東西共用，不複製：結果信封（`_result`）、30 日下載快取（`_http`）、讀格（`_values`）、地址查詢（`als`），以及運輸署兩份交通消息（`notices`）。
 
-兩點照直講：第三至第五階段未有程式，上面的次序是計劃不是承諾。第二階段是例外——十條目標市民問題已經寫入 [docs/TASKS.md](docs/TASKS.md)，是按市民會問的問題選出來，不是按手上有的數據集選。未定同已知缺口放在 [docs/BACKLOG.md](docs/BACKLOG.md)。九巴同渡輪的程式目前留在 [`hkdata`](https://github.com/gnokit/hkdata)，到時再決定搬過來還是包一層。
+兩點照直講：第三至第五階段未有程式，上面的次序是計劃不是承諾。第三階段的十條目標市民問題同數據源亦已寫入 [docs/TASKS.md](docs/TASKS.md)。第二階段是例外——唔單止寫了範圍，連程式都已經有。兩者都是按市民會問的問題選出來，不是按手上有的數據集選。未定同已知缺口放在 [docs/BACKLOG.md](docs/BACKLOG.md)。九巴同渡輪的程式目前留在 [`hkdata`](https://github.com/gnokit/hkdata)，到時再決定搬過來還是包一層。
 
 ## 快速開始
 
