@@ -210,3 +210,12 @@ def test_stop_payload_is_not_a_list_so_it_is_an_error(monkeypatch):
     monkeypatch.setattr(minibus_core, "fetch_json", eta_payload({"nope": 1}))
     with pytest.raises(MtrError):
         minibus_core.gmb_stop_eta("9001")
+
+
+def test_minibus_stop_names_keep_the_readable_side(monkeypatch):
+    """A '/' joined name is one line, not two with a stray break."""
+    from hk_transport import bus_core
+
+    assert bus_core._clean_name("甲站/<br>乙站") == "甲站/乙站"
+    assert bus_core._clean_name("甲站<br>乙站") == "甲站 乙站"
+    assert bus_core._clean_name("") is None

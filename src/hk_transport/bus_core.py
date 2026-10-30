@@ -523,6 +523,14 @@ def td_bus_fares() -> dict:
 _TD_STOP_MEMORY: dict | None = None
 
 
+def _clean_name(value: object) -> str | None:
+    """TD writes "A/<br>B" when a stop has two names; keep one readable line."""
+    text = blank(value)
+    if text is None:
+        return None
+    return text.replace("/<br>", "/").replace("<br>", " ").strip() or None
+
+
 def clear_td_cache() -> None:
     """Forget the parsed 75 MB stop table held in this process."""
     global _TD_STOP_MEMORY
@@ -569,8 +577,7 @@ def td_bus_route_stops() -> dict:
                         "special_type": props.get("specialType"),
                         "seq": props.get("stopSeq"),
                         "stop": str(props.get("stopId")),
-                        "name_zh": (blank(props.get("stopNameC")) or "").replace("<br>", " ").strip()
-                        or None,
+                        "name_zh": _clean_name(props.get("stopNameC")),
                         "name_en": blank(props.get("stopNameE")),
                         "latitude": number(coords[1]) if len(coords) > 1 else None,
                         "longitude": number(coords[0]) if len(coords) > 0 else None,
