@@ -1,9 +1,10 @@
 """One journey search across every network this skill has.
 
-The bus, minibus and railway graphs are built into a single graph:
+The bus, minibus, tram, ferry and railway graphs are built into a single
+graph:
 
-- a **point** node is a place you can stand: a bus stop, a minibus stop, or a
-  station (the average of its exit coordinates);
+- a **point** node is a place you can stand: a bus stop, a minibus stop, a
+  tram stop, a ferry pier, or a station (the average of its exit coordinates);
 - a **trip** node is one position on one trip: (mode, trip key, stop order);
 - edges are ride (one stop), board (a transfer), alight, and walk.
 
@@ -13,10 +14,9 @@ point to the destination. The search prices walking with straight-line
 distance, then the chosen walk legs are re-priced with the Lands Department
 pedestrian route search, which returns a real path length and time.
 
-Cost is the triple (transfers, stops, walking metres), compared in that
-order. One transfer outweighs any number of stops, and one stop outweighs any
-walk inside the cap; walking only breaks ties within the same stop count.
-That is a policy, not a measurement, and the answer exposes all three parts.
+Cost is transfers, then stops, then walking metres, encoded as one integer for
+a plain Dijkstra. The weights are policy, not measurement, and the answer
+exposes all three parts.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ from __future__ import annotations
 import heapq
 import math
 from collections import defaultdict
+from dataclasses import dataclass
 
 from hk_transport import (
     _places,
@@ -35,7 +36,6 @@ from hk_transport import (
     pedroute,
     tram_core,
 )
-from hk_transport.mtr import _line_names
 from hk_transport._result import compose
 
 _WALK = 800
@@ -43,24 +43,36 @@ _LINK = 300
 _WALK_RETRY = 1500
 _WALK_CAP = 1500
 _LINK_NEIGHBOURS = 8
+_WALK_CALLS = 12
 
-# Weights, in one integer so a plain Dijkstra can search them. A transfer is
-# worth 100 stops, and a stop is worth 100 metres of walking. Without the
-# walking weight the search saves a stop by walking two kilometres, which is
-# what the first version did. These are policy numbers, not measurements.
+# One transfer outweighs any number of stops; one stop outweighs any walk
+# inside the cap. Encoded in one integer so a plain Dijkstra can search it.
 _TRANSFER = 1_000_000
 _STOP = 1_000
 _WALK_WEIGHT = 10
 
 NOTE = (
     "方案按（轉車、停站、步行）加權排序：一次轉車當 100 個站，一個站當 100 米步行。唔係時間。"
-    "已接入：港鐵、九巴／龍運、城巴、新大嶼山、港鐵巴士、綠色專線小巴、電車、山頂纜車、渡輪，以及少量離島同跨境路線。"
-    "未接入：的士、高鐵。"
+    "已接入：港鐵、九巴／龍運、城巴、新大嶼山、港鐵巴士、綠色專線小巴、電車、渡輪，以及少量離島同跨境路線。"
+    "未接入：山頂纜車、的士、高鐵。"
     "步行距離同時間由地政總署行人路網計算，路網冇覆蓋時會改用直線距離並標明。"
-    "起點同終點係按地名解析出嚟的一個點，唔代表整個區域。"
+    "起點同終點係按地名解析出嚟的一個點，唔代表整個區域；地名由地政總署地點搜尋解析。"
 )
 
 _memory: dict | None = None
+
+
+@dataclass
+class _WalkBudget:
+    """How many pedestrian-network calls one answer may still make."""
+
+    calls: int = _WALK_CALLS
+
+    def take(self) -> bool:
+        if self.calls <= 0:
+            return False
+        self.calls -= 1
+        return True
 
 
 def clear_cache() -> None:
@@ -69,31 +81,16 @@ def clear_cache() -> None:
     _memory = None
 
 
-def _station_points() -> dict[str, dict]:
-    """One point per station, averaged from the exit snapshot."""
-    buckets: dict[str, list[tuple[float, float]]] = defaultdict(list)
-    names: dict[str, str] = {}
-    for row in exits._load()["exits"]:
-        latitude, longitude = row.get("latitude"), row.get("longitude")
-        if latitude is None or longitude is None:
-            continue
-        for station_id in row.get("station_ids") or []:
-            buckets[station_id].append((latitude, longitude))
-            names.setdefault(station_id, row.get("station_zh"))
-    points = {}
-    for station_id, items in buckets.items():
-        points[station_id] = {
-            "name_zh": names.get(station_id),
-            "latitude": sum(item[0] for item in items) / len(items),
-            "longitude": sum(item[1] for item in items) / len(items),
-        }
-    return points
-
-
-def _trip_rows() -> list[dict]:
+def _trip_rows(
+    bus: dict,
+    gmb_rows: dict,
+    tram_rows: dict,
+    ferry_rows: dict,
+    mtr_rows: dict,
+) -> list[dict]:
     """One row per stop per trip, for every network in the graph."""
     rows: list[dict] = []
-    for row in bus_core.td_bus_route_stops()["data"]:
+    for row in bus["data"]:
         rows.append(
             {
                 "mode": "bus",
@@ -106,11 +103,12 @@ def _trip_rows() -> list[dict]:
                 ),
                 "seq": row["seq"] or 0,
                 "point": f"bus:{row['stop']}",
+                "stop": row["stop"],
                 "route": row["route"],
                 "operator": row["company"],
             }
         )
-    for row in minibus_core.gmb_route_stops()["data"]:
+    for row in gmb_rows["data"]:
         rows.append(
             {
                 "mode": "minibus",
@@ -122,11 +120,12 @@ def _trip_rows() -> list[dict]:
                 ),
                 "seq": row["seq"] or 0,
                 "point": f"minibus:{row['stop']}",
+                "stop": row["stop"],
                 "route": row["route"],
                 "operator": "GMB",
             }
         )
-    for row in tram_core.tram_stops()["data"]:
+    for row in tram_rows["data"]:
         rows.append(
             {
                 "mode": "tram",
@@ -139,11 +138,12 @@ def _trip_rows() -> list[dict]:
                 ),
                 "seq": row["seq"] or 0,
                 "point": f"tram:{row['stop']}",
+                "stop": row["stop"],
                 "route": row["route"],
                 "operator": row["company"],
             }
         )
-    for row in ferry_core.ferry_stops()["data"]:
+    for row in ferry_rows["data"]:
         rows.append(
             {
                 "mode": "ferry",
@@ -155,18 +155,20 @@ def _trip_rows() -> list[dict]:
                 ),
                 "seq": row["seq"] or 0,
                 "point": f"ferry:{row['stop']}",
+                "stop": row["stop"],
                 "route": row["route"],
                 "operator": "FERRY",
             }
         )
-    for row in mtr_core.lines_and_stations()["data"]:
-        zh, _ = _line_names(row["line_code"])
+    for row in mtr_rows["data"]:
+        zh, _ = mtr_core.line_names(row["line_code"])
         rows.append(
             {
                 "mode": "mtr",
                 "key": (row["line_code"], row["direction"]),
                 "seq": row["sequence"] or 0,
                 "point": f"mtr:{row['id']}",
+                "stop": row["id"],
                 "route": zh or row["line_code"],
                 "operator": "MTR",
             }
@@ -174,31 +176,31 @@ def _trip_rows() -> list[dict]:
     return rows
 
 
-def _point_table(rows: list[dict]) -> dict[str, dict]:
+def _point_table(bus: dict, gmb_stops: dict, stations: dict) -> dict[str, dict]:
     """Every place you can stand at, with the name that network publishes."""
     points: dict[str, dict] = {}
     seen: dict[str, dict] = {}
-    for row in bus_core.td_bus_route_stops()["data"]:
-        if row.get("latitude") is None or row.get("longitude") is None:
+    for row in bus["data"]:
+        if row["latitude"] is None or row["longitude"] is None:
             continue
         seen.setdefault(row["stop"], row)
     for stop_id, row in seen.items():
         points[f"bus:{stop_id}"] = {
             "point": f"bus:{stop_id}",
             "mode": "bus",
-            "stop": f"bus:{stop_id}",
+            "stop": stop_id,
             "name_zh": row["name_zh"],
             "name_en": row["name_en"],
             "latitude": row["latitude"],
             "longitude": row["longitude"],
         }
-    for row in minibus_core.gmb_stops()["data"]:
-        if row.get("latitude") is None or row.get("longitude") is None:
+    for row in gmb_stops["data"]:
+        if row["latitude"] is None or row["longitude"] is None:
             continue
         points[f"minibus:{row['stop']}"] = {
             "point": f"minibus:{row['stop']}",
             "mode": "minibus",
-            "stop": f"minibus:{row['stop']}",
+            "stop": row["stop"],
             "name_zh": row["name_zh"],
             "name_en": row["name_en"],
             "latitude": row["latitude"],
@@ -212,7 +214,7 @@ def _point_table(rows: list[dict]) -> dict[str, dict]:
             {
                 "point": f"tram:{row['stop']}",
                 "mode": "tram",
-                "stop": f"tram:{row['stop']}",
+                "stop": row["stop"],
                 "name_zh": row["name_zh"],
                 "name_en": row["name_en"],
                 "latitude": row["latitude"],
@@ -227,18 +229,18 @@ def _point_table(rows: list[dict]) -> dict[str, dict]:
             {
                 "point": f"ferry:{row['stop']}",
                 "mode": "ferry",
-                "stop": f"ferry:{row['stop']}",
+                "stop": row["stop"],
                 "name_zh": row["name_zh"],
                 "name_en": row["name_en"],
                 "latitude": row["latitude"],
                 "longitude": row["longitude"],
             },
         )
-    for station_id, row in _station_points().items():
-        points[f"mtr:{station_id}"] = {
-            "point": f"mtr:{station_id}",
+    for row in stations["data"]:
+        points[f"mtr:{row['station_id']}"] = {
+            "point": f"mtr:{row['station_id']}",
             "mode": "mtr",
-            "stop": f"mtr:{station_id}",
+            "stop": row["station_id"],
             "name_zh": row["name_zh"],
             "name_en": None,
             "latitude": row["latitude"],
@@ -248,20 +250,32 @@ def _point_table(rows: list[dict]) -> dict[str, dict]:
 
 
 def _graph() -> dict:
-    """Build the whole network once per process."""
+    """Build the whole network once per process, and keep its sources."""
     global _memory
     if _memory is not None:
         return _memory
 
-    trips = _trip_rows()
-    points = _point_table(trips)
+    bus = bus_core.td_bus_route_stops()
+    gmb_stops = minibus_core.gmb_stops()
+    gmb_rows = minibus_core.gmb_route_stops()
+    tram_rows = tram_core.tram_stops()
+    ferry_rows = ferry_core.ferry_stops()
+    mtr_rows = mtr_core.lines_and_stations()
+    stations = exits.mtr_station_points()
+    sources = [bus, gmb_stops, gmb_rows, tram_rows, ferry_rows, mtr_rows, stations]
+
+    trips = _trip_rows(bus, gmb_rows, tram_rows, ferry_rows, mtr_rows)
+    points = _point_table(bus, gmb_stops, stations)
     by_trip: dict[tuple[str, tuple], list[tuple[float, str]]] = defaultdict(list)
     labels: dict[tuple[str, tuple], dict] = {}
     for row in trips:
         if row["point"] not in points:
             continue
         by_trip[(row["mode"], row["key"])].append((row["seq"], row["point"]))
-        labels.setdefault((row["mode"], row["key"]), {"route": row["route"], "operator": row["operator"]})
+        labels.setdefault(
+            (row["mode"], row["key"]),
+            {"route": row["route"], "operator": row["operator"]},
+        )
 
     point_index = {key: index for index, key in enumerate(points)}
     nodes: list[tuple] = [("point", key) for key in points]
@@ -272,7 +286,6 @@ def _graph() -> dict:
         stops.sort()
         if len(stops) < 2:
             continue
-        indices = []
         previous = None
         for position, (_, point) in enumerate(stops):
             node = len(nodes)
@@ -284,7 +297,6 @@ def _graph() -> dict:
             if previous is not None:
                 adjacency[previous].append((node, _STOP, "ride", (mode, key)))
             previous = node
-            indices.append(node)
 
     # Walk links between different points inside the transfer radius.
     cells: dict[tuple[int, int], list[str]] = defaultdict(list)
@@ -314,16 +326,23 @@ def _graph() -> dict:
 
     _memory = {
         "points": points,
-        "labels": labels,
         "point_index": point_index,
         "nodes": nodes,
         "adjacency": adjacency,
         "cells": cells,
+        "labels": labels,
+        "sources": sources,
     }
     return _memory
 
 
-def _nearby(points: dict[str, dict], cell_index: dict, latitude: float, longitude: float, radius: float):
+def _nearby(
+    points: dict[str, dict],
+    cell_index: dict,
+    latitude: float,
+    longitude: float,
+    radius: float,
+):
     cell_y, cell_x = int(latitude / 0.005), int(longitude / 0.005)
     found = []
     for dy in (-1, 0, 1):
@@ -338,12 +357,7 @@ def _nearby(points: dict[str, dict], cell_index: dict, latitude: float, longitud
 
 
 def _dijkstra(adjacency, start: int, end: int, penalty: set | None = None):
-    """Shortest path that must ride at least once and may not chain walks.
-
-    Chaining walk edges would let the search "walk" through five stops in a
-    row, adding distances nobody walks. Requiring a ride keeps a pure walk
-    from winning on cost, because a walk-only path pays no boarding at all.
-    """
+    """Shortest path that must ride at least once and may not chain walks."""
     best = {(start, False, False): 0}
     previous: dict[tuple[int, bool, bool], tuple[tuple[int, bool, bool], str, tuple]] = {}
     queue = [(0, start, False, False)]
@@ -393,8 +407,7 @@ def _legs(path, graph, origin_point, destination_point) -> list[dict]:
     def point_of(node: int) -> dict:
         if node >= count:
             return origin_point if node == count else destination_point
-        key = graph["nodes"][node][1]
-        return points[key]
+        return points[graph["nodes"][node][1]]
 
     for source, target, kind, meta in path:
         if kind in {"start", "walk", "end"}:
@@ -414,8 +427,16 @@ def _legs(path, graph, origin_point, destination_point) -> list[dict]:
                 {
                     "type": "walk",
                     "metres": gap,
-                    "from": {"name_zh": from_point["name_zh"], "latitude": from_point["latitude"], "longitude": from_point["longitude"]},
-                    "to": {"name_zh": to_point["name_zh"], "latitude": to_point["latitude"], "longitude": to_point["longitude"]},
+                    "from": {
+                        "name_zh": from_point["name_zh"],
+                        "latitude": from_point["latitude"],
+                        "longitude": from_point["longitude"],
+                    },
+                    "to": {
+                        "name_zh": to_point["name_zh"],
+                        "latitude": to_point["latitude"],
+                        "longitude": to_point["longitude"],
+                    },
                 }
             )
             continue
@@ -446,12 +467,12 @@ def _legs(path, graph, origin_point, destination_point) -> list[dict]:
 
 
 def _start_edges(graph, latitude: float, longitude: float, radius: float):
-    return [
-        (gap, key) for gap, key in _nearby(graph["points"], graph["cells"], latitude, longitude, radius)
-    ]
+    return list(
+        _nearby(graph["points"], graph["cells"], latitude, longitude, radius)
+    )
 
 
-def _price_walks(legs: list[dict], counter: list[int]) -> None:
+def _price_walks(legs: list[dict], budget: _WalkBudget, sources: list[dict]) -> None:
     """Replace straight-line walk metres with the pedestrian network, in place."""
     for leg in legs:
         if leg["type"] != "walk":
@@ -459,10 +480,9 @@ def _price_walks(legs: list[dict], counter: list[int]) -> None:
         if leg["metres"] == 0:
             leg["minutes"] = 0.0
             continue
-        if counter[0] <= 0:
+        if not budget.take():
             leg["estimated"] = True
             continue
-        counter[0] -= 1
         try:
             result = pedroute.walk_route(
                 leg["from"]["latitude"],
@@ -473,6 +493,7 @@ def _price_walks(legs: list[dict], counter: list[int]) -> None:
         except Exception:  # a failed walk must not lose the journey
             leg["estimated"] = True
             continue
+        sources.append(result)
         data = result["data"] or {}
         if data.get("found"):
             leg["straight_line_metres"] = leg["metres"]
@@ -492,25 +513,30 @@ def journey(
 
     資料集：港鐵 `mtr_core.lines_and_stations`、專營巴士
     `bus_core.td_bus_route_stops`（含城巴、新大嶼山、港鐵巴士）、
-    綠色專線小巴 `minibus_core.gmb_route_stops`、地政總署行人路網
-    `pedroute.walk_route`。
+    綠色專線小巴 `minibus_core.gmb_route_stops`、電車 `tram_core.tram_stops`、
+    渡輪 `ferry_core.ferry_stops`、車站座標 `exits.mtr_station_points`、
+    步行 `pedroute.walk_route`、地名 `geocode.place_search`。
     用法：`journey("元州邨", "香港迪士尼樂園")`。
     市民會問：由我呢度去 X，搭咩車？要唔要轉車？行幾遠？
 
-    交還多個方案，每個帶步行段同乘車段。成本係（轉車、停站、步行米），
+    交還多個方案，每個帶步行段同乘車段。成本係（轉車、停站、步行），
     唔係時間；乘車時間冇數據，只有步行時間來自行人路網。
-    電車、渡輪、的士同高鐵未接入，跨出這個範圍的組合接唔上。
+    山頂纜車、的士、高鐵未接入，跨出這個範圍的組合接唔上。
+
+    地名由地政總署地點搜尋解析，所以 `sources` 只列網絡同步行來源；
+    地名解析的來源見 `geocode.place_search` 自己的信封。
     """
     options = options or 3
     walk = walk or _WALK
     graph = _graph()
     points = graph["points"]
+    sources = list(graph["sources"])
     start_point, note = _places.place(origin, points)
     if start_point is None:
-        return compose([], None, note=note)
+        return compose(sources, None, note=note)
     end_point, note = _places.place(destination, points)
     if end_point is None:
-        return compose([], None, note=note)
+        return compose(sources, None, note=note)
 
     starts = _start_edges(graph, start_point["latitude"], start_point["longitude"], walk)
     ends = _start_edges(graph, end_point["latitude"], end_point["longitude"], walk)
@@ -525,9 +551,9 @@ def journey(
         )
         widened = f"最近站超過 {walk} 米，已自動放寬到 {wide} 米。"
     if not starts:
-        return compose([], None, note=f"起點 {_WALK_RETRY} 米內沒有已接入的站。")
+        return compose(sources, None, note=f"起點 {walk} 米內沒有已接入的站。")
     if not ends:
-        return compose([], None, note=f"終點 {_WALK_RETRY} 米內沒有已接入的站。")
+        return compose(sources, None, note=f"終點 {walk} 米內沒有已接入的站。")
 
     start_index = len(graph["nodes"])
     end_index = start_index + 1
@@ -562,12 +588,11 @@ def journey(
         if signature in seen:
             continue
         seen.add(signature)
-        total_walk = sum(leg["metres"] for leg in legs if leg["type"] == "walk")
         chosen.append(
             {
                 "transfers": max(len(rides) - 1, 0),
                 "stops": sum(leg["stops"] for leg in rides),
-                "walk_metres": total_walk,
+                "walk_metres": sum(leg["metres"] for leg in legs if leg["type"] == "walk"),
                 "legs": legs,
             }
         )
@@ -575,11 +600,11 @@ def journey(
             break
 
     if not chosen:
-        return compose([], None, note=NOTE + "這兩個地方在已接入的網絡上接不上。")
+        return compose(sources, None, note=NOTE + "這兩個地方在已接入的網絡上接不上。")
 
-    counter = [12]
+    budget = _WalkBudget()
     for option in chosen:
-        _price_walks(option["legs"], counter)
+        _price_walks(option["legs"], budget, sources)
         option["walk_metres"] = sum(
             leg["metres"] for leg in option["legs"] if leg["type"] == "walk"
         )
@@ -598,7 +623,7 @@ def journey(
         )
     )
     return compose(
-        [],
+        sources,
         {
             "origin": start_point,
             "destination": end_point,

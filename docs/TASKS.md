@@ -448,7 +448,7 @@
 
 ### 未定的決定
 
-1. **紅色小巴要唔要一個恆常回「冇數據」的命令**，定係只在 `SKILL.md` 講清楚由代理照答。第二階段的做法係三條冇數據的問題都有命令（`bus_service_hours` 等），傾向一致。
+1. ~~紅色小巴要唔要一個恆常回「冇數據」的命令~~ **2026-10-30 已決定：要**，即 `red_minibus`，同其他冇數據的命令一致。
 2. **綠巴同專營巴士要唔要合成一個旅程圖。** 這正是 B-1／B-2 的延伸；本階段預設唔做，但 `_graph` 的節點鍵要預留營辦商欄，唔好寫死。
 3. **GMB 站快照要唔要 commit 入 repo。** 九巴的做法是 commit（694 KB）；綠巴站更多，要先量體積。
 4. **優先次序：B-28（活動特別線當正規線）同 B-29（冇步行轉乘邊）建議在第三階段之前修。** 小巴線短、轉車多，冇步行轉乘邊會令小巴旅程比巴士更常兜大圈。
@@ -499,11 +499,13 @@
 
 ### T3.2 `src/hk_transport/_graph.py` — 重用，唔另寫（2026-10-30 已完成）
 
+**更正：** `journey.py` 的圖模型同 `_graph.build` 唔同（點節點＋上落車邊，vs 行程節點＋轉車邊），所以冇直接用 `_graph.build`；共用的是同一個檔案同同一套成本概念。
+
 節點鍵由（路線、方向、服務類型、站）擴成（**營辦商**、區域、路線、`route_seq`、站）。第一階段同第二階段的現有測試要照跑，證明改動冇整壞重鐵同巴士。
 
 ### T3.3 `src/hk_transport/minibus.py` — 一條市民問題一個函式（2026-10-30 已完成）
 
-`minibus_journey`、`minibus_route`、`minibus_stops_near`、`minibus_direct`、`minibus_fare`、`minibus_service_hours`、`minibus_frequency`、`minibus_eta`、`minibus_disruption`、`minibus_accessibility`。
+`minibus_route`、`minibus_stops_near`、`minibus_direct`、`minibus_fare`、`minibus_service_hours`、`minibus_frequency`、`minibus_eta`、`minibus_disruption`、`minibus_accessibility`。
 
 地名解析沿用 `geocode.place_search`；步行半徑內冇站時，照第二階段的做法講最近那個站同直線距離。
 
@@ -564,7 +566,7 @@
 
 ### 仍未做
 
-- 城巴、新大嶼山已接入（2026-10-30，見 B-2 更正）；電車、渡輪、的士、高鐵未接入。
+- 城巴、新大嶼山、電車、渡輪已接入（2026-10-30）；山頂纜車、的士、高鐵未接入。
 - 乘車時間、班次、出發時間冇數據，所以冇「全程幾耐」。
 - 舊的單模式 journey 函式仍在庫內，未刪。
 
@@ -634,7 +636,7 @@
 |---|---|
 | 中環 → 長洲 | `FERRY 中環 - 長洲`（1 段、步行 1,021 m ＋ 195 m） |
 | 銅鑼灣 → 上環 | 港島線（4 站）；電車因站數多而排在後面，係成本模型的结果 |
-| 元州邨 → 山頂 | 巴士組合（X15 等）；山頂纜車未成為最便宜方案 |
+| 元州邨 → 山頂 | 巴士組合（X15 等）；**山頂纜車未接入圖**，所以唔會出現 |
 
 **仍未做：** 渡輪班次（B-32）、電車實時到站（冇官方數據）、渡輪營辦商。
 

@@ -174,45 +174,27 @@ def ferry_eta(route: str | None = None, pier: str | None = None) -> dict:
     return compose([], None, note="這個技能沒有渡輪實時到站數據，答唔到下一班船。")
 
 
-def ferry_disruption(route: str) -> dict:
+def ferry_disruption(route: str, limit: int = 5) -> dict:
     """今日有冇通告影響這條渡輪航線。
 
     資料集 `hk-td-tis_19-special-traffic-news-v2` 同
-    `hk-td-tis_22-traffic-notices`，由 `notices` 讀取。
+    `hk-td-tis_22-traffic-notices`，由 `notices.route_matches` 讀取。
     用法：`ferry_disruption("長洲")`。
-    市民會問：今日渡輪有冇停航或改道？
+    市民會問：今日有冇改道、暫停或者停航？
 
-    用航線名或碼頭名做關鍵字；停航通告通常會寫碼頭名。
+    關鍵字用整詞邊界比對，所以「6」唔會中「16」。通告未必逐條列出受影響路線，
+    所以「冇搵到」不等於「冇事」。
     """
     token = route.strip()
     if not token:
-        return compose([], None, note="要給一條航線或一個碼頭的名字。")
-    news = notices.special_traffic_news()
-    plans = notices.special_traffic_arrangements()
-    matches = []
-    for source, rows in (("news", news["data"] or []), ("arrangement", plans["data"] or [])):
-        for row in rows:
-            text = " ".join(
-                filter(
-                    None,
-                    [row.get("heading_zh"), row.get("detail_zh"), row.get("title_zh"), row.get("content_zh")],
-                )
-            )
-            if token not in text:
-                continue
-            matches.append(
-                {
-                    "source": source,
-                    "id": row.get("id"),
-                    "title": row.get("heading_zh") or row.get("title_zh"),
-                    "effective": row.get("start_date") or row.get("announcement_at"),
-                    "excerpt": (row.get("detail_zh") or row.get("content_zh") or "")[:200],
-                }
-            )
+        return compose([], None, note="要給一條路線的名字。")
+    matches, sources = notices.route_matches(token, limit or 5)
     if not matches:
         return compose(
-            [news, plans],
+            sources,
             {"route": token, "matches": []},
-            note=DISRUPTION_NOTE + "這次兩份通告都沒有提到這條航線。",
+            note=DISRUPTION_NOTE + "這次兩份通告都沒有提到這條線。",
         )
-    return compose([news, plans], {"route": token, "matches": matches[:5]}, note=DISRUPTION_NOTE)
+    return compose(sources, {"route": token, "matches": matches}, note=DISRUPTION_NOTE)
+
+

@@ -547,3 +547,28 @@ def bus_schedule(route_name: str, language: str = "zh") -> dict:
             "stops": stops,
         },
     )
+
+
+# Codes published in mtr_lines_and_stations.csv. The CSV has no line names.
+LINE_NAMES = {
+    "AEL": ("機場快線", "Airport Express"),
+    "DRL": ("迪士尼線", "Disneyland Resort Line"),
+    "EAL": ("東鐵線", "East Rail Line"),
+    "ISL": ("港島線", "Island Line"),
+    "KTL": ("觀塘線", "Kwun Tong Line"),
+    "SIL": ("南港島線", "South Island Line"),
+    "TCL": ("東涌線", "Tung Chung Line"),
+    "TKL": ("將軍澳線", "Tseung Kwan O Line"),
+    "TML": ("屯馬線", "Tuen Ma Line"),
+    "TWL": ("荃灣線", "Tsuen Wan Line"),
+}
+
+
+def line_names(code: str) -> tuple[str | None, str | None]:
+    """一條重鐵線的中英文名；未知代碼交還 (None, None)。
+
+    資料集 `hk-td-tis_1-mtr-lines-and-stations` 只有線代碼，線名由這份表提供。
+    用法：`line_names("TWL")`。
+    市民會問：呢條線叫咩名？
+    """
+    return LINE_NAMES.get(code, (None, None))

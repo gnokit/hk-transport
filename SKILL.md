@@ -89,7 +89,7 @@ Any point-to-point question goes to `journey.sh journey`. It searches the railwa
 - Options, not one best route. Present them as alternatives and let the person choose. Never call one 最快 or 最好: cost is transfers then stops, not minutes.
 - A bus fare is the **adult full fare** for boarding that route. It is not a section fare, and it excludes concessions and transfer discounts. Several legs mean several boardings; say the total is the sum of adult fares, not the amount the person will pay.
 - `journey_time_minutes` is the whole route's published running time, not the segment ridden. Never present it as the trip time.
-- Bus answers cover **KMB and LWB**. A journey will not include Citybus, NLB or minibuses, and cannot transfer between operators — say so when it changes the answer.
+- Bus answers cover **KMB and LWB**. Journeys are answered by `journey.sh`, which does include Citybus, NLB and minibus; the per-mode bus commands do not.
 - Service hours, headway and low-floor access have no data. The commands answer `null` and say why; do not estimate them.
 - A disruption match is a keyword hit in Transport Department notices. No match does not mean no disruption, and notices do not always name routes.
 
@@ -105,7 +105,7 @@ Any point-to-point question goes to `journey.sh journey`. It searches the railwa
 ### Minibuses
 
 - **A route code is unique only inside a district.** `37` exists in more than one of `HKI`, `KLN`, `NT`. When a code matches several, the answer lists all of them — say which district, and never narrow it to one yourself.
-- A minibus journey is green minibus only. It cannot use a bus or the railway, and cannot transfer between operators. Say so when it changes the answer.
+- The per-mode minibus commands never include buses or the railway. Journeys across modes go through `journey.sh`.
 - The fare is the **adult full fare** for boarding that route. It is not a section fare, and it excludes every concession.
 - `journey_time_minutes` is the whole route's published time, not the segment ridden.
 - Real-time arrivals need **a stop**. There is no whole-route next-bus endpoint, so a route alone cannot be answered; ask for the stop.

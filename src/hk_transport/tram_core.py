@@ -65,27 +65,30 @@ def tram_routes() -> dict:
 
     票價係全程一個價，落車再上車要再付。
     """
-    seen: dict[tuple, dict] = {}
-    for row in _load(TRAM_URL)["rows"]:
-        key = (row["route_id"], row["route_seq"], row["service_mode"], row["special_type"])
-        seen.setdefault(
-            key,
-            {
-                "company": row["company"],
-                "route": row["route"],
-                "route_en": row["route_en"],
-                "route_id": row["route_id"],
-                "route_seq": row["route_seq"],
-                "service_mode": row["service_mode"],
-                "special_type": row["special_type"],
-                "origin_zh": row["origin_zh"],
-                "dest_zh": row["dest_zh"],
-                "fare": row["fare"],
-                "journey_time_minutes": row["journey_time_minutes"],
-                "remark": row["remark"],
-            },
-        )
-    return _envelope(TRAM_URL, list(seen.values()), NOTE)
+    rows = [
+        {
+            "company": row["company"],
+            "route": row["route"],
+            "route_en": row["route_en"],
+            "route_id": row["route_id"],
+            "route_seq": row["route_seq"],
+            "service_mode": row["service_mode"],
+            "special_type": row["special_type"],
+            "origin_zh": row["origin_zh"],
+            "dest_zh": row["dest_zh"],
+            "fare": row["fare"],
+            "journey_time_minutes": row["journey_time_minutes"],
+            "remark": row["remark"],
+        }
+        for row in _load(TRAM_URL)["rows"]
+    ]
+    return _envelope(
+        TRAM_URL,
+        _td_stops.dedupe_variants(
+            rows, ("route_id", "route_seq", "service_mode", "special_type")
+        ),
+        NOTE,
+    )
 
 
 def peak_tram_stops() -> dict:
@@ -110,19 +113,24 @@ def peak_tram_routes() -> dict:
     由 `peak_tram_stops()` 去重而來。用法：`peak_tram_routes()`。
     市民會問：山頂纜車幾多錢？
     """
-    seen: dict[tuple, dict] = {}
-    for row in _load(PEAK_URL)["rows"]:
-        key = (row["route_id"], row["route_seq"], row["service_mode"], row["special_type"])
-        seen.setdefault(
-            key,
-            {
-                "route": row["route"],
-                "route_id": row["route_id"],
-                "route_seq": row["route_seq"],
-                "origin_zh": row["origin_zh"],
-                "dest_zh": row["dest_zh"],
-                "fare": row["fare"],
-                "journey_time_minutes": row["journey_time_minutes"],
-            },
-        )
-    return _envelope(PEAK_URL, list(seen.values()), "山頂纜車票價係全程價，唔係分段。")
+    rows = [
+        {
+            "route": row["route"],
+            "route_id": row["route_id"],
+            "route_seq": row["route_seq"],
+            "service_mode": row["service_mode"],
+            "special_type": row["special_type"],
+            "origin_zh": row["origin_zh"],
+            "dest_zh": row["dest_zh"],
+            "fare": row["fare"],
+            "journey_time_minutes": row["journey_time_minutes"],
+        }
+        for row in _load(PEAK_URL)["rows"]
+    ]
+    return _envelope(
+        PEAK_URL,
+        _td_stops.dedupe_variants(
+            rows, ("route_id", "route_seq", "service_mode", "special_type")
+        ),
+        "山頂纜車票價係全程價，唔係分段。",
+    )

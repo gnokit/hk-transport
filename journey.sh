@@ -76,14 +76,14 @@ def _commands() -> tuple[Command, ...]:
     return (
         Command(
             "journey",
-            "Any journey across rail, buses and green minibuses",
+            "Any journey across rail, buses, minibuses, tram and ferry",
             (
-                "One search over MTR, KMB/LWB and green minibus together.",
+                "One search over MTR, every franchised bus, green minibus, tram and ferry.",
                 "Each option lists its walk legs and its ride legs, in order.",
                 "Ranking is transfers, then stops, then walking; one transfer counts as 100 stops and one stop as 100 metres of walking.",
                 "Walking metres and minutes come from the Lands Department pedestrian network; when a walk has no route there, it is marked estimated.",
                 "No riding time is published, so a total duration is never given. No fares are included.",
-                "Citybus, NLB, tram and ferry are not in the graph yet.",
+                "The Peak Tram, taxis and high-speed rail are not in the graph yet.",
             ),
             lambda ns: journey(
                 _required(ns.origin),

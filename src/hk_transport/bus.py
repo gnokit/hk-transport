@@ -15,18 +15,11 @@ Three rules come from testing the raw graph:
 
 from __future__ import annotations
 
-import math
 import re
 from collections import defaultdict
 
 from hk_transport import _graph, bus_core, notices
-from hk_transport._places import (
-    distance as _distance,
-    nearest_stop as _nearest_stop,
-    outside as _outside,
-    place as _place,
-    stops_within as _stops_within,
-)
+from hk_transport._places import outside as _outside, place as _place, stops_within as _stops_within
 from hk_transport._result import compose
 
 _WALK = 400
@@ -182,18 +175,11 @@ DISRUPTION_NOTE = (
 )
 
 
-def _mentions(text: str, token: str) -> bool:
-    """True when the route token appears as a whole token, not inside a number."""
-    pattern = rf"(?<![0-9A-Za-z]){re.escape(token)}(?![0-9A-Za-z])"
-    return re.search(pattern, text, flags=re.IGNORECASE) is not None
-
-
 def bus_disruption(route: str, limit: int = 5) -> dict:
     """今日有冇通告影響這條巴士線。
 
     資料集 `hk-td-tis_19-special-traffic-news-v2` 同
-    `hk-td-tis_22-traffic-notices`，由 `notices` 的兩個核心函式讀取。
-
+    `hk-td-tis_22-traffic-notices`，由 `notices.route_matches` 讀取。
     用法：`bus_disruption("K66")`。
     市民會問：今日呢條線有冇改道、暫停或者塞車？
 
@@ -205,45 +191,14 @@ def bus_disruption(route: str, limit: int = 5) -> dict:
     token = route.strip().upper()
     if not re.fullmatch(r"[A-Z]{0,2}\d{1,3}[A-Z]?", token):
         return compose([], None, note=f"唔似巴士路線號碼：{route}")
-    news = notices.special_traffic_news()
-    plans = notices.special_traffic_arrangements()
-    matches = []
-    for source, rows in (("news", news["data"] or []), ("arrangement", plans["data"] or [])):
-        for row in rows:
-            text = " ".join(
-                filter(
-                    None,
-                    [
-                        row.get("heading_zh"),
-                        row.get("detail_zh"),
-                        row.get("location_zh"),
-                        row.get("title_zh"),
-                        row.get("content_zh"),
-                    ],
-                )
-            )
-            if not _mentions(text, token):
-                continue
-            matches.append(
-                {
-                    "source": source,
-                    "id": row.get("id"),
-                    "title": row.get("heading_zh") or row.get("title_zh"),
-                    "effective": row.get("start_date") or row.get("announcement_at"),
-                    "excerpt": (row.get("detail_zh") or row.get("content_zh") or "")[:200],
-                }
-            )
-            if len(matches) >= limit:
-                break
-        if len(matches) >= limit:
-            break
+    matches, sources = notices.route_matches(token, limit)
     if not matches:
         return compose(
-            [news, plans],
+            sources,
             {"route": token, "matches": []},
             note=DISRUPTION_NOTE + "這次兩份通告都沒有提到這條線。",
         )
-    return compose([news, plans], {"route": token, "matches": matches}, note=DISRUPTION_NOTE)
+    return compose(sources, {"route": token, "matches": matches}, note=DISRUPTION_NOTE)
 
 
 NO_DATA = {

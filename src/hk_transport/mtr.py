@@ -27,19 +27,7 @@ LINE_STATION_AMBIGUOUS = "這個站名在這條線上對應多於一個車站代
 LIGHT_RAIL_STOP_AMBIGUOUS = "這個名稱對應多於一個輕鐵站，沒有查下一班。"
 ROUTE_AMBIGUOUS = "這個名稱對應多於一條路線。"
 
-# Codes published in mtr_lines_and_stations.csv. The CSV has no line names.
-LINES = {
-    "AEL": ("機場快線", "Airport Express"),
-    "DRL": ("迪士尼線", "Disneyland Resort Line"),
-    "EAL": ("東鐵線", "East Rail Line"),
-    "ISL": ("港島線", "Island Line"),
-    "KTL": ("觀塘線", "Kwun Tong Line"),
-    "SIL": ("南港島線", "South Island Line"),
-    "TCL": ("東涌線", "Tung Chung Line"),
-    "TKL": ("將軍澳線", "Tseung Kwan O Line"),
-    "TML": ("屯馬線", "Tuen Ma Line"),
-    "TWL": ("荃灣線", "Tsuen Wan Line"),
-}
+from hk_transport.mtr_core import LINE_NAMES as LINES, line_names as _line_names
 
 # One physical interchange, three station ids: AEL Hong Kong (44), TCL Hong
 # Kong (39), and Central (1). The key is deliberately not a station id, so a
@@ -83,10 +71,6 @@ def _view(row: dict) -> dict:
         "name_zh": row["name_zh"],
         "name_en": row["name_en"],
     }
-
-
-def _line_names(code: str) -> tuple[str | None, str | None]:
-    return LINES.get(code, (None, None))
 
 
 def _matches(row: dict, query: str, id_key: str, code_key: str | None) -> bool:

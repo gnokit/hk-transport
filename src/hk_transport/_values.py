@@ -30,3 +30,15 @@ def number(value: object) -> float | None:
         return float(text)
     except ValueError:
         return None
+
+
+def clean_breaks(value: object) -> str | None:
+    """Text with the publisher's line breaks flattened, or None when empty.
+
+    The Transport Department writes a two-name stop as "A/<br>B"; keeping that
+    as one readable line is better than leaking markup into an answer.
+    """
+    text = blank(value)
+    if text is None:
+        return None
+    return text.replace("/<br>", "/").replace("<br>", " ").strip() or None

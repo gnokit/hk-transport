@@ -68,6 +68,7 @@ MTR_ROWS = [
     {"line_code": "TWL", "direction": "DT", "id": "2", "sequence": 2, "name_zh": "二站"},
 ]
 EXITS = {
+    "retrieved_at": "2026-10-30T00:00:00+08:00",
     "exits": [
         {
             "station_zh": "一站",
@@ -141,7 +142,7 @@ def _walk_leg(metres=500):
 
 def test_walk_legs_are_re_priced_by_the_pedestrian_network(wired):
     legs = [_walk_leg()]
-    j._price_walks(legs, [5])
+    j._price_walks(legs, j._WalkBudget(calls=5), [])
     assert legs[0]["metres"] == 123
     assert legs[0]["minutes"] == 2.0
     assert legs[0]["straight_line_metres"] == 500
@@ -154,7 +155,7 @@ def test_a_walk_with_no_route_is_marked_estimated(wired, monkeypatch):
         lambda *args: {"data": {"found": False, "metres": None, "minutes": None}, "note": "x"},
     )
     legs = [_walk_leg()]
-    j._price_walks(legs, [5])
+    j._price_walks(legs, j._WalkBudget(calls=5), [])
     assert legs[0]["estimated"] is True
     assert legs[0]["metres"] == 500
 
@@ -177,3 +178,17 @@ def test_the_note_states_the_weighting_and_the_scope(wired):
     assert "轉車" in note
     assert "電車" in note
     assert "地政總署" in note
+
+
+def test_the_answer_carries_its_datasets_and_endpoints(wired):
+    result = j.journey("巴士一站", "巴士二站")
+    assert result["dataset_id"]
+    assert result["endpoint"]
+    assert result["sources"]
+
+
+def test_a_raw_stop_id_resolves_inside_the_graph(wired):
+    result = j.journey("B1", "B3")
+    assert result["data"] is not None
+    assert result["data"]["origin"]["resolved_as"] == "stop"
+    assert result["data"]["origin"]["name_zh"] == "巴士一站"

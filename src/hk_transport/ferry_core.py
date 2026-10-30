@@ -63,32 +63,31 @@ def ferry_routes() -> dict:
 
     航線名係「起點 - 終點」；同一對碼頭可以有兩個方向。
     """
-    seen: dict[tuple, dict] = {}
-    for row in _load()["rows"]:
-        key = (row["route_id"], row["route_seq"], row["service_mode"], row["special_type"])
-        seen.setdefault(
-            key,
-            {
-                "route": row["route"],
-                "route_en": row["route_en"],
-                "route_id": row["route_id"],
-                "route_seq": row["route_seq"],
-                "service_mode": row["service_mode"],
-                "special_type": row["special_type"],
-                "origin_zh": row["origin_zh"],
-                "dest_zh": row["dest_zh"],
-                "fare": row["fare"],
-                "journey_time_minutes": row["journey_time_minutes"],
-                "remark": row["remark"],
-            },
-        )
     loaded = _load()
+    rows = [
+        {
+            "route": row["route"],
+            "route_en": row["route_en"],
+            "route_id": row["route_id"],
+            "route_seq": row["route_seq"],
+            "service_mode": row["service_mode"],
+            "special_type": row["special_type"],
+            "origin_zh": row["origin_zh"],
+            "dest_zh": row["dest_zh"],
+            "fare": row["fare"],
+            "journey_time_minutes": row["journey_time_minutes"],
+            "remark": row["remark"],
+        }
+        for row in loaded["rows"]
+    ]
     return envelope(
         dataset_id=DATASET_ID,
         endpoint=FERRY_URL,
         retrieved_at=loaded["retrieved_at"],
         data_at=loaded["data_at"],
         update_frequency="biweekly",
-        data=list(seen.values()),
+        data=_td_stops.dedupe_variants(
+            rows, ("route_id", "route_seq", "service_mode", "special_type")
+        ),
         note=NOTE,
     )

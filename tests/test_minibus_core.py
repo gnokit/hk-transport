@@ -107,7 +107,7 @@ def test_routes_are_one_row_per_variant(parsed):
     assert first["district"] == "NT"
     assert first["fare"] == 9.0
     assert first["journey_time_minutes"] == 18.0
-    assert result["dataset_id"] == "hk-td-tis_3-routes-and-fares-of-public-transport"
+    assert result["dataset_id"] == "hk-td-tis_23-routes-fares-geojson"
     assert result["update_frequency"] == "biweekly"
 
 
@@ -212,10 +212,10 @@ def test_stop_payload_is_not_a_list_so_it_is_an_error(monkeypatch):
         minibus_core.gmb_stop_eta("9001")
 
 
-def test_minibus_stop_names_keep_the_readable_side(monkeypatch):
+def test_stop_names_keep_the_readable_side():
     """A '/' joined name is one line, not two with a stray break."""
-    from hk_transport import bus_core
+    from hk_transport._values import clean_breaks
 
-    assert bus_core._clean_name("甲站/<br>乙站") == "甲站/乙站"
-    assert bus_core._clean_name("甲站<br>乙站") == "甲站 乙站"
-    assert bus_core._clean_name("") is None
+    assert clean_breaks("甲站/<br>乙站") == "甲站/乙站"
+    assert clean_breaks("甲站<br>乙站") == "甲站 乙站"
+    assert clean_breaks("") is None

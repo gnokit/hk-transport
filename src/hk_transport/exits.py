@@ -115,3 +115,53 @@ def mtr_exits(station: str) -> dict:
         data=rows or None,
         note=note,
     )
+
+
+def mtr_station_points() -> dict:
+    """每個重鐵站一個點，由該站所有出口的座標平均而來。
+
+    資料集 `hk-landsd-openmap-development-location-search-api`，
+    端點 `https://www.map.gov.hk/gs/api/v1.0.0/locationSearch`（快照）。
+    用法：`mtr_station_points()`。
+    市民會問：這個站喺邊？行程要由邊個站開始？
+
+    港鐵沒有公布單一站中心座標，所以這裡用出口平均，並在 note 講明。
+    一個站有多個編號（機場快線香港站 44、東涌線香港站 39）會各自成一點。
+    這份表是約一年的快照，查詢時不重新下載。
+    """
+    snapshot = _load()
+    retrieved_at = snapshot.get("retrieved_at") or ""
+    buckets: dict[str, list[tuple[float, float]]] = {}
+    names: dict[str, str] = {}
+    for row in snapshot["exits"]:
+        latitude, longitude = row.get("latitude"), row.get("longitude")
+        if latitude is None or longitude is None:
+            continue
+        for station_id in row.get("station_ids") or []:
+            buckets.setdefault(station_id, []).append((latitude, longitude))
+            names.setdefault(station_id, row.get("station_zh"))
+    data = [
+        {
+            "station_id": station_id,
+            "name_zh": names.get(station_id),
+            "latitude": round(sum(p[0] for p in points) / len(points), 6),
+            "longitude": round(sum(p[1] for p in points) / len(points), 6),
+            "exits": len(points),
+        }
+        for station_id, points in sorted(buckets.items(), key=lambda item: int(item[0]) if item[0].isdigit() else 0)
+    ]
+    note = (
+        "站中心是該站所有出口座標的平均，港鐵沒有公布站中心座標。"
+        "這份快照約一年內重用，查詢時不重新下載。"
+    )
+    if _stale(retrieved_at):
+        note += "這份快照已超過一年。"
+    return envelope(
+        dataset_id=DATASET_ID,
+        endpoint=SEARCH_ENDPOINT,
+        retrieved_at=retrieved_at,
+        data_at=None,
+        update_frequency="yearly",
+        data=data,
+        note=note,
+    )

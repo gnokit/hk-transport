@@ -188,48 +188,28 @@ def peak_tram() -> dict:
     )
 
 
-def tram_disruption(route: str) -> dict:
+def tram_disruption(route: str, limit: int = 5) -> dict:
     """今日有冇通告影響這條電車線。
 
     資料集 `hk-td-tis_19-special-traffic-news-v2` 同
-    `hk-td-tis_22-traffic-notices`，由 `notices` 讀取。
+    `hk-td-tis_22-traffic-notices`，由 `notices.route_matches` 讀取。
     用法：`tram_disruption("跑馬地")`。
-    市民會問：今日電車有冇改道或暫停？
+    市民會問：今日有冇改道、暫停或者停航？
 
-    電車線冇號碼，所以用線名做關鍵字，誤中機會比巴士高。
+    關鍵字用整詞邊界比對，所以「6」唔會中「16」。通告未必逐條列出受影響路線，
+    所以「冇搵到」不等於「冇事」。
     """
     token = route.strip()
     if not token:
-        return compose([], None, note="要給一條電車線的名字。")
-    news = notices.special_traffic_news()
-    plans = notices.special_traffic_arrangements()
-    matches = []
-    for source, rows in (("news", news["data"] or []), ("arrangement", plans["data"] or [])):
-        for row in rows:
-            text = " ".join(
-                filter(
-                    None,
-                    [row.get("heading_zh"), row.get("detail_zh"), row.get("title_zh"), row.get("content_zh")],
-                )
-            )
-            if token not in text:
-                continue
-            matches.append(
-                {
-                    "source": source,
-                    "id": row.get("id"),
-                    "title": row.get("heading_zh") or row.get("title_zh"),
-                    "effective": row.get("start_date") or row.get("announcement_at"),
-                    "excerpt": (row.get("detail_zh") or row.get("content_zh") or "")[:200],
-                }
-            )
+        return compose([], None, note="要給一條路線的名字。")
+    matches, sources = notices.route_matches(token, limit or 5)
     if not matches:
         return compose(
-            [news, plans],
+            sources,
             {"route": token, "matches": []},
             note=DISRUPTION_NOTE + "這次兩份通告都沒有提到這條線。",
         )
-    return compose([news, plans], {"route": token, "matches": matches[:5]}, note=DISRUPTION_NOTE)
+    return compose(sources, {"route": token, "matches": matches}, note=DISRUPTION_NOTE)
 
 
 def tram_service_hours(route: str | None = None) -> dict:

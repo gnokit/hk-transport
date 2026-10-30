@@ -12,9 +12,9 @@ import ijson
 
 from hk_transport._http import cached_file
 from hk_transport._result import MtrError, as_hkt
-from hk_transport._values import blank, number
+from hk_transport._values import blank, clean_breaks, number
 
-DATASET_ID = "hk-td-tis_3-routes-and-fares-of-public-transport"
+DATASET_ID = "hk-td-tis_23-routes-fares-geojson"
 BASE = "https://static.data.gov.hk/td/routes-fares-geojson"
 
 
@@ -28,13 +28,6 @@ def split_remark(text: str | None) -> tuple[str | None, str | None]:
         remark = value[len(head):].replace(")(", "; ").strip("() ")
         return head.strip() or None, remark or None
     return value, None
-
-
-def _clean(text: str | None) -> str | None:
-    value = blank(text)
-    if value is None:
-        return None
-    return value.replace("/<br>", "/").replace("<br>", " ").strip() or None
 
 
 def stop_rows(url: str) -> dict:
@@ -68,7 +61,7 @@ def stop_rows(url: str) -> dict:
                         "special_type": props.get("specialType"),
                         "seq": props.get("stopSeq"),
                         "stop": str(props.get("stopId")),
-                        "name_zh": _clean(props.get("stopNameC")),
+                        "name_zh": clean_breaks(props.get("stopNameC")),
                         "name_en": blank(props.get("stopNameE")),
                         "latitude": number(coords[1]) if len(coords) > 1 else None,
                         "longitude": number(coords[0]) if len(coords) > 0 else None,
@@ -83,3 +76,12 @@ def stop_rows(url: str) -> dict:
     except (OSError, ValueError) as exc:
         raise MtrError(str(exc), dataset_id=DATASET_ID, endpoint=url) from exc
     return {"rows": rows, "retrieved_at": retrieved_at, "data_at": as_hkt(updated)}
+
+
+def dedupe_variants(rows: list[dict], fields: tuple[str, ...]) -> list[dict]:
+    """One row per route variant, keeping the first, for the route tables."""
+    seen: dict[tuple, dict] = {}
+    for row in rows:
+        key = tuple(row[field] for field in fields)
+        seen.setdefault(key, row)
+    return list(seen.values())

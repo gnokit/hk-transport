@@ -186,3 +186,51 @@ def special_traffic_arrangements() -> dict:
         data=items,
         note=note,
     )
+
+
+def _mentions(text: str, token: str) -> bool:
+    """True when the token appears as a whole token, not inside a number."""
+    import re
+
+    pattern = rf"(?<![0-9A-Za-z]){re.escape(token)}(?![0-9A-Za-z])"
+    return re.search(pattern, text, flags=re.IGNORECASE) is not None
+
+
+def route_matches(token: str, limit: int = 5) -> tuple[list[dict], list[dict]]:
+    """通告裡提到一條路線／航線的項目，同兩份通告的信封。
+
+    參數 `token` 係路線號碼、線名或碼頭名。交還 `(matches, sources)`，
+    呼叫方自己 `compose`。關鍵字用整詞邊界比對，所以「6」唔會中「16」。
+    """
+    token = (token or "").strip()
+    news = special_traffic_news()
+    plans = special_traffic_arrangements()
+    matches: list[dict] = []
+    for source, rows in (("news", news["data"] or []), ("arrangement", plans["data"] or [])):
+        for row in rows:
+            text = " ".join(
+                filter(
+                    None,
+                    [
+                        row.get("heading_zh"),
+                        row.get("detail_zh"),
+                        row.get("location_zh"),
+                        row.get("title_zh"),
+                        row.get("content_zh"),
+                    ],
+                )
+            )
+            if not _mentions(text, token):
+                continue
+            matches.append(
+                {
+                    "source": source,
+                    "id": row.get("id"),
+                    "title": row.get("heading_zh") or row.get("title_zh"),
+                    "effective": row.get("start_date") or row.get("announcement_at"),
+                    "excerpt": (row.get("detail_zh") or row.get("content_zh") or "")[:200],
+                }
+            )
+            if len(matches) >= limit:
+                return matches, [news, plans]
+    return matches, [news, plans]

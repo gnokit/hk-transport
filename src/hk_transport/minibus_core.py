@@ -25,7 +25,7 @@ from hk_transport._http import cached_file, fetch_json
 from hk_transport._result import MtrError, as_hkt, envelope
 from hk_transport._values import blank, number
 
-DATASET_STATIC = "hk-td-tis_3-routes-and-fares-of-public-transport"
+DATASET_STATIC = "hk-td-tis_23-routes-fares-geojson"
 DATASET_ETA = "hk-td-sm_7-real-time-arrival-data-of-gmb"
 STATIC_URL = "https://static.data.gov.hk/td/routes-fares-geojson/JSON_GMB.json"
 ETA_BASE = "https://data.etagmb.gov.hk"
