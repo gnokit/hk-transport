@@ -25,7 +25,16 @@ import heapq
 import math
 from collections import defaultdict
 
-from hk_transport import _places, bus_core, exits, minibus_core, mtr_core, pedroute
+from hk_transport import (
+    _places,
+    bus_core,
+    exits,
+    ferry_core,
+    minibus_core,
+    mtr_core,
+    pedroute,
+    tram_core,
+)
 from hk_transport.mtr import _line_names
 from hk_transport._result import compose
 
@@ -45,8 +54,8 @@ _WALK_WEIGHT = 10
 
 NOTE = (
     "方案按（轉車、停站、步行）加權排序：一次轉車當 100 個站，一個站當 100 米步行。唔係時間。"
-    "已接入：港鐵、九巴／龍運、城巴、新大嶼山、港鐵巴士、綠色專線小巴，以及少量離島同跨境路線。"
-    "未接入：電車、渡輪、的士、高鐵。"
+    "已接入：港鐵、九巴／龍運、城巴、新大嶼山、港鐵巴士、綠色專線小巴、電車、山頂纜車、渡輪，以及少量離島同跨境路線。"
+    "未接入：的士、高鐵。"
     "步行距離同時間由地政總署行人路網計算，路網冇覆蓋時會改用直線距離並標明。"
     "起點同終點係按地名解析出嚟的一個點，唔代表整個區域。"
 )
@@ -117,6 +126,39 @@ def _trip_rows() -> list[dict]:
                 "operator": "GMB",
             }
         )
+    for row in tram_core.tram_stops()["data"]:
+        rows.append(
+            {
+                "mode": "tram",
+                "key": (
+                    row["company"],
+                    row["route_id"],
+                    row["route_seq"],
+                    row["service_mode"],
+                    row["special_type"],
+                ),
+                "seq": row["seq"] or 0,
+                "point": f"tram:{row['stop']}",
+                "route": row["route"],
+                "operator": row["company"],
+            }
+        )
+    for row in ferry_core.ferry_stops()["data"]:
+        rows.append(
+            {
+                "mode": "ferry",
+                "key": (
+                    row["route_id"],
+                    row["route_seq"],
+                    row["service_mode"],
+                    row["special_type"],
+                ),
+                "seq": row["seq"] or 0,
+                "point": f"ferry:{row['stop']}",
+                "route": row["route"],
+                "operator": "FERRY",
+            }
+        )
     for row in mtr_core.lines_and_stations()["data"]:
         zh, _ = _line_names(row["line_code"])
         rows.append(
@@ -162,6 +204,36 @@ def _point_table(rows: list[dict]) -> dict[str, dict]:
             "latitude": row["latitude"],
             "longitude": row["longitude"],
         }
+    for row in tram_core.tram_stops()["data"]:
+        if row["latitude"] is None or row["longitude"] is None:
+            continue
+        points.setdefault(
+            f"tram:{row['stop']}",
+            {
+                "point": f"tram:{row['stop']}",
+                "mode": "tram",
+                "stop": f"tram:{row['stop']}",
+                "name_zh": row["name_zh"],
+                "name_en": row["name_en"],
+                "latitude": row["latitude"],
+                "longitude": row["longitude"],
+            },
+        )
+    for row in ferry_core.ferry_stops()["data"]:
+        if row["latitude"] is None or row["longitude"] is None:
+            continue
+        points.setdefault(
+            f"ferry:{row['stop']}",
+            {
+                "point": f"ferry:{row['stop']}",
+                "mode": "ferry",
+                "stop": f"ferry:{row['stop']}",
+                "name_zh": row["name_zh"],
+                "name_en": row["name_en"],
+                "latitude": row["latitude"],
+                "longitude": row["longitude"],
+            },
+        )
     for station_id, row in _station_points().items():
         points[f"mtr:{station_id}"] = {
             "point": f"mtr:{station_id}",

@@ -8,7 +8,8 @@ description: >
   traffic disruption (交通消息). Also use for franchised buses (巴士, 九巴,
   城巴): which route (搭咩車), stops (巴士站), fare (車費), next bus (下一班),
   or whether a route is disrupted (改道). Also green minibus (小巴, 綠巴,
-  專線小巴): which route, stops, fare, next minibus. Also /hk-transport.
+  專線小巴): which route, stops, fare, next minibus. Also tram (電車) and
+  ferry (渡輪, 船): route, piers, fare. Also /hk-transport.
   Not tram, ferry, or high-speed rail.
 compatibility: Requires uv and Python >=3.13. $SKILL_DIR is the directory that contains mtr.sh, bus.sh and minibus.sh.
 ---
@@ -17,7 +18,7 @@ compatibility: Requires uv and Python >=3.13. $SKILL_DIR is the directory that c
 
 Answer a Hong Kong transport question by running one of this skill's scripts. Do not write a fetcher. Do not invent a figure a command did not return.
 
-**Scope: one journey search over MTR, franchised buses (KMB, LWB, Citybus, NLB, MTR feeder buses), green minibuses and the Lands Department pedestrian network; plus per-mode route, fare, stop and arrival commands, address lookup, the heavy-rail exit snapshot, and the two Transport Department feeds.** Out of scope today: tram, ferry, taxi, cross-boundary rail and high-speed rail.
+**Scope: one journey search over MTR, franchised buses (KMB, LWB, Citybus, NLB, MTR feeder buses), green minibuses and the Lands Department pedestrian network; plus per-mode route, fare, stop and arrival commands, address lookup, the heavy-rail exit snapshot, and the two Transport Department feeds.** Out of scope today: taxi, cross-boundary rail and high-speed rail.
 
 > If the request is out of scope, say 「這個問題超出 hk-transport（港交寶）的範圍。」 Leave KMB and ferry programs in hkdata. Do not copy them.
 
@@ -30,6 +31,8 @@ bash ${SKILL_DIR}/journey.sh  # any point-to-point journey, all modes together
 bash ${SKILL_DIR}/mtr.sh      # MTR and its feeders, plus place search
 bash ${SKILL_DIR}/bus.sh      # franchised buses
 bash ${SKILL_DIR}/minibus.sh  # green minibuses
+bash ${SKILL_DIR}/tram.sh     # Hong Kong Tramways and the Peak Tram
+bash ${SKILL_DIR}/ferry.sh    # every ferry route the TD lists
 ```
 
 No arguments and `help` print the same page: a short introduction, then one line per command. Read `help <command>` when its arguments are not obvious. stdout of a command is JSON.
@@ -77,7 +80,7 @@ Any point-to-point question goes to `journey.sh journey`. It searches the railwa
 - **Ranking is transfers, then stops, then walking.** One transfer counts as 100 stops, one stop as 100 metres of walking. Say that when the person asks why one option is first.
 - **Walking is real, not straight-line.** Metres and minutes come from the Lands Department pedestrian network. A leg marked `estimated: true` means that network had no route and the figure is straight-line — say which it is.
 - **There is no riding time.** Never add up a total duration. The walk minutes are the only minutes the answer contains.
-- **Scope: MTR, KMB/LWB, Citybus, NLB, MTR feeder buses, green minibus, plus a few outlying-island and cross-boundary routes.** Tram, ferry, taxi and high-speed rail are not in the graph. When the answer looks short, that may be why.
+- **Scope: MTR, KMB/LWB, Citybus, NLB, MTR feeder buses, green minibus, tram, Peak Tram, ferry, plus a few outlying-island and cross-boundary routes.** Taxi and high-speed rail are not in the graph. When the answer looks short, that may be why.
 - No fares are included; use the per-mode fare commands.
 
 ### Buses
@@ -89,6 +92,15 @@ Any point-to-point question goes to `journey.sh journey`. It searches the railwa
 - Bus answers cover **KMB and LWB**. A journey will not include Citybus, NLB or minibuses, and cannot transfer between operators — say so when it changes the answer.
 - Service hours, headway and low-floor access have no data. The commands answer `null` and say why; do not estimate them.
 - A disruption match is a keyword hit in Transport Department notices. No match does not mean no disruption, and notices do not always name routes.
+
+### Trams and ferries
+
+- Tram lines have **names, not numbers** (「筲箕灣 - 跑馬地線」). Search with a word from the name.
+- **Eastbound and westbound tram stops are different stops.** Do not merge them.
+- The tram fare is **flat**; boarding again after alighting costs another fare.
+- **Ferry data carries no operator.** Answer with the route and the piers, never 「新渡輪」 or 「天星」 — the file does not say.
+- Ferry fares are adult full fares, not section fares.
+- There is **no tram arrival data, no ferry timetable and no next boat**. Those commands answer `null` and say why; do not estimate a sailing from memory.
 
 ### Minibuses
 

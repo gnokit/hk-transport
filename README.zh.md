@@ -39,7 +39,7 @@
 | 1 | 港鐵重鐵、機場快線、迪士尼線、輕鐵、接駁巴士 | `mtr.sh` | ✅ 14 個指令 |
 | 2 | 專營巴士 | `bus.sh` | 已建，測試中 |
 | 3 | 綠色專線小巴、紅色小巴 | `minibus.sh` | 已建，測試中 |
-| 4 | 電車、渡輪 | `tram.sh`、`ferry.sh` | 未開始 |
+| 4 | 電車、山頂纜車、渡輪 | `tram.sh`、`ferry.sh` | 已建，測試中 |
 | 5 | 的士、跨境鐵路同高速鐵路 | `taxi.sh`、`rail.sh` | 未開始 |
 
 每個階段都要交同一組五樣東西：
@@ -111,6 +111,22 @@ bash mtr.sh mtr_next_train 港島線 金鐘                # 問一條問題
 | `light_rail` | 一條路線的停站順序，或兩站之間車費 |
 | `light_rail_next` | 一個站即將開出的班次，特別班會標明 |
 | `mtr_bus` | 接駁巴士停站、以路線計的車費、各站下一班 |
+
+**電車與渡輪**
+
+| 指令 | 回答 |
+|---|---|
+| `tram_route` | 一條電車線的停站順序，或經不經一個地方 |
+| `tram_stops_near` | 一個地方附近的電車站 |
+| `tram_fare` | 電車成人車費 |
+| `peak_tram` | 山頂纜車的站同票價 |
+| `ferry_route` | 一條渡輪航線的碼頭順序 |
+| `ferry_piers_near` | 一個地方附近的碼頭 |
+| `ferry_fare` | 渡輪成人票價 |
+| `ferry_disruption` | 運輸署通告有提到這條航線的 |
+| `tram_service_hours`、`tram_eta`、`ferry_timetable`、`ferry_eta` | 沒有數據，照講 |
+
+渡輪數據沒有營辦商，所以答案只講航線同碼頭，不講公司。
 
 **綠色專線小巴**
 

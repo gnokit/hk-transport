@@ -105,6 +105,8 @@ def wired(monkeypatch):
     monkeypatch.setattr(j.minibus_core, "gmb_stops", lambda: envelope(GMB_STOPS))
     monkeypatch.setattr(j.minibus_core, "gmb_route_stops", lambda: envelope(GMB_ROWS))
     monkeypatch.setattr(j.mtr_core, "lines_and_stations", lambda: envelope(MTR_ROWS))
+    monkeypatch.setattr(j.tram_core, "tram_stops", lambda: envelope([]))
+    monkeypatch.setattr(j.ferry_core, "ferry_stops", lambda: envelope([]))
     monkeypatch.setattr(j.exits, "_load", lambda: EXITS)
     monkeypatch.setattr(
         j.pedroute,

@@ -40,7 +40,7 @@ Phase 1 ships one entry script, `mtr.sh`. Every later phase adds a sibling scrip
 | 2 | Franchised buses | `bus.sh` | built, under test |
 | 3 | Green minibus, red minibus | `minibus.sh` | built, under test |
 | — | One journey across every built mode | `journey.sh` | built, under test |
-| 4 | Tram, ferry | `tram.sh`, `ferry.sh` | not started |
+| 4 | Tram, Peak Tram, ferry | `tram.sh`, `ferry.sh` | built, under test |
 | 5 | Taxi, cross-boundary and high-speed rail | `taxi.sh`, `rail.sh` | not started |
 
 Every phase ships the same five things:
@@ -112,6 +112,23 @@ Each command answers one kind of question. These are phase 1.
 | `light_rail` | Stop order on a route, or the fare between two stops |
 | `light_rail_next` | Next departures from one stop, special departures marked |
 | `mtr_bus` | Feeder-bus stops, per-route fare, and next arrivals |
+
+**Tram and ferry**
+
+| Command | Answers |
+|---|---|
+| `tram_route` | Stop order of one tram line, or whether it serves a place |
+| `tram_stops_near` | Tram stops near a place |
+| `tram_fare` | Adult tram fare |
+| `peak_tram` | Peak Tram stops and fare |
+| `tram_disruption` | TD notices that mention a line |
+| `ferry_route` | Pier order of one ferry route |
+| `ferry_piers_near` | Ferry piers near a place |
+| `ferry_fare` | Adult ferry fare |
+| `ferry_disruption` | TD notices that mention a route |
+| `tram_service_hours`, `tram_eta`, `ferry_timetable`, `ferry_eta` | No data; say so |
+
+Ferry data carries no operator, so answers name the route and piers, never the company.
 
 **Green minibus**
 

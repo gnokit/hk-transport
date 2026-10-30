@@ -267,6 +267,20 @@
 
 **前置：** 先確認 MDB 的 schema（`FARE_GMB.mdb` 有幾張表、欄位），再決定快照形狀。
 
+### B-32 渡輪同電車冇班次、冇實時到站
+
+第四階段只做到航線、碼頭、票價。市民最常問的「幾點有船」、「尾班船幾點」、「下一班幾時到」全部答唔到。
+
+已有的官方數據：
+
+| 來源 | 內容 | 狀態 |
+|---|---|---|
+| 港九小輪 `hkkf-hkkfdata-hkkf-eta-data` | 航線、碼頭、時間表、票價、ETA | `/opendata/route` 同 `/opendata/pier/{id}` 通；**`/opendata/eta/` 的參數格式未確認** |
+| 新渡輪 | 時間表 CSV | `hkdata` 已有 scraper，唔係 data.gov.hk |
+| 電車 | — | 冇官方實時或班次數據 |
+
+**建議：** 先讀 HKKF 的 API spec PDF（`hkkfeta.com/datagovhk/HKKF_ETA_Data_Dictionary.pdf`），把 ETA 接上；時間表另做一份快照。電車維持「冇數據」。
+
 ## MTR 範圍
 
 ### B-12 出口→地標（「去某座大廈行邊個出口」）

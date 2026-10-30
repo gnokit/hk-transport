@@ -2,7 +2,7 @@
 
 這個倉庫是港交寶（`hk-transport`），一個 AI agent skill。第一階段的港鐵部分已實作。代理指示在 [SKILL.md](SKILL.md)。回答市民時用 `mtr.sh`，`$SKILL_DIR` 是安裝目錄：`bash ${SKILL_DIR}/mtr.sh` 列出命令，`bash ${SKILL_DIR}/mtr.sh help <command>` 看該命令。新的公開函式要在 `mtr.sh` 加子命令。開工前先讀 [docs/TASKS.md](docs/TASKS.md)。那份文件是第一階段的範圍。
 
-程式分兩層。`src/hk_transport/mtr_core.py` 一個函式包一份港鐵數據。`src/hk_transport/als.py` 的 `address_lookup` 包地政總署地址查詢，是位置問題的核心，不快取。`src/hk_transport/exits.py` 的 `mtr_exits` 讀重鐵出入口座標，那是約一年有效的快照，查詢時不重新下載。`src/hk_transport/notices.py` 包運輸署特別交通消息和特別交通及運輸安排，全港交通都在內，不快取，也不按港鐵篩選。`src/hk_transport/mtr.py` 用這些函式回答市民的問題，裡面沒有 URL，也沒有快取。新的問題組合現有核心函式。新的數據源才加一個核心函式。第二階段加了 `bus_core.py`（一份巴士資源一個函式）、`bus.py`（十條市民問題十個函式）、`_graph.py`（兩種模式共用的尋路）同 `bus.sh`。第三階段加了 `minibus_core.py`、`minibus.py` 同 `minibus.sh`。跨模式加咗 `journey.py`（三個網絡一張圖）同 `pedroute.py`（地政總署 3D 行人路網）；地名解析同步行半徑搬到 `_places.py`，尋路建圖搬到 `_graph.build`，兩邊共用，唔再各寫一份。`geocode.py` 的 `place_search` 包地政總署 GeoInfo Map 的地點搜尋，是地名問題的核心，不快取；`bus.py` 用它把「南生圍」這類地名變成一個點，`als.py` 只在它找不到時做門牌後備。三份共用的東西各有去處：`_result.py` 是信封同 `compose`，`_http.py` 是下載同 30 日快取，`_values.py` 是讀一格。
+程式分兩層。`src/hk_transport/mtr_core.py` 一個函式包一份港鐵數據。`src/hk_transport/als.py` 的 `address_lookup` 包地政總署地址查詢，是位置問題的核心，不快取。`src/hk_transport/exits.py` 的 `mtr_exits` 讀重鐵出入口座標，那是約一年有效的快照，查詢時不重新下載。`src/hk_transport/notices.py` 包運輸署特別交通消息和特別交通及運輸安排，全港交通都在內，不快取，也不按港鐵篩選。`src/hk_transport/mtr.py` 用這些函式回答市民的問題，裡面沒有 URL，也沒有快取。新的問題組合現有核心函式。新的數據源才加一個核心函式。第二階段加了 `bus_core.py`（一份巴士資源一個函式）、`bus.py`（十條市民問題十個函式）、`_graph.py`（兩種模式共用的尋路）同 `bus.sh`。第三階段加了 `minibus_core.py`、`minibus.py` 同 `minibus.sh`。跨模式加咗 `journey.py`（全部網絡一張圖）同 `pedroute.py`（地政總署 3D 行人路網）；第四階段加咗 `_td_stops.py`（電車、山頂纜車、渡輪共用解析器）、`tram_core.py`／`ferry_core.py`、`tram.py`／`ferry.py` 同 `tram.sh`／`ferry.sh`；地名解析同步行半徑搬到 `_places.py`，尋路建圖搬到 `_graph.build`，兩邊共用，唔再各寫一份。`geocode.py` 的 `place_search` 包地政總署 GeoInfo Map 的地點搜尋，是地名問題的核心，不快取；`bus.py` 用它把「南生圍」這類地名變成一個點，`als.py` 只在它找不到時做門牌後備。三份共用的東西各有去處：`_result.py` 是信封同 `compose`，`_http.py` 是下載同 30 日快取，`_values.py` 是讀一格。
 
 每月 CSV 的副本在技能目錄的 `.cache/`，30 日後重新下載。`.gitignore` 已忽略這個目錄。測試用 `HK_TRANSPORT_CACHE` 指到暫存目錄。實時 API 不寫入快取。出入口快照在 `src/hk_transport/data/mtr_exits.json`，不放進 `.cache/`。同一個進程內另有一份記憶快取（`mtr_core._memory`），避免一次回答內重複解析同一份表；`clear_cache()` 清。
 
@@ -70,6 +70,15 @@ uv run pytest -m live -o addopts=
 - 專營巴士的站序用 `bus_core.td_bus_route_stops()`（運輸署 `JSON_BUS.json`），一份檔有齊 KMB、CTB、LWB、NLB、港鐵巴士、DB、PI、XB。九巴的 `/route-stop` 快照只留給 ETA，唔再參與尋路。
 - **電車、渡輪、的士、高鐵未接入。** 答案短可能係因為呢個，要在 note 講。
 - `companyCode` 有 `KMB+CTB` 這種聯營寫法，係一個變體，唔可以當兩條線。
+
+## 電車同渡輪裡容易答錯的地方
+
+- **電車線冇號碼**，用中文線名（「筲箕灣 - 跑馬地線」）。配對用線名或其中一個詞。
+- **電車站分東行同西行**，係兩個 `stop_id`，唔可以合併；過馬路係步行邊。
+- **電車係固定收費**（$3.3），唔係分段；落車再上車要再付。
+- **渡輪數據冇營辦商。** `JSON_FERRY.json` 的 hyperlink 全部指 `td.gov.hk`，所以唔可以講「新渡輪」或「天星」。
+- **渡輪／電車都冇班次表同實時到站。** `ferry_timetable`、`ferry_eta`、`tram_eta`、`tram_service_hours` 一律答 null。
+- 三個檔案同巴士一樣是「一站一 feature」的 GeoJSON，用 `_td_stops.stop_rows()` 讀；站名夾住的票價備註由 `split_remark` 分開。
 
 ## 地名解析裡容易答錯的地方
 
