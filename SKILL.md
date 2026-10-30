@@ -5,41 +5,43 @@ description: >
   next train (下一班), fare (車費), route (路線), journey and interchange
   (轉車), ride time (幾耐), Light Rail (輕鐵), MTR bus (港鐵巴士), a station
   exit (出口), barrier-free facilities (無障礙設施), an address (地址), or a
-  traffic disruption (交通消息). Also /hk-transport. Not franchised bus,
-  minibus, tram, ferry, or high-speed rail.
-compatibility: Requires uv and Python >=3.13. $SKILL_DIR is the directory that contains mtr.sh.
+  traffic disruption (交通消息). Also use for franchised buses (巴士, 九巴,
+  城巴): which route (搭咩車), stops (巴士站), fare (車費), next bus (下一班),
+  or whether a route is disrupted (改道). Also /hk-transport. Not minibus,
+  tram, ferry, or high-speed rail.
+compatibility: Requires uv and Python >=3.13. $SKILL_DIR is the directory that contains mtr.sh and bus.sh.
 ---
 
 # hk-transport（港交寶）
 
-Answer a Hong Kong MTR question by running `mtr.sh`. This skill is phase 1 of hk-transport: it covers MTR and its feeders. Do not write a fetcher. Do not invent a figure the command did not return.
+Answer a Hong Kong transport question by running one of this skill's scripts. Do not write a fetcher. Do not invent a figure a command did not return.
 
-**Scope: MTR heavy rail, Airport Express, Disneyland Resort Line, Light Rail, MTR feeder buses, address lookup, the heavy-rail exit snapshot, and the two Transport Department feeds — live special-traffic news and advance special-traffic arrangements.** Franchised bus, green minibus, tram, ferry, taxi, red minibus, and cross-boundary rail are out of scope.
+**Scope: MTR heavy rail, Airport Express, Disneyland Resort Line, Light Rail, MTR feeder buses, address lookup, the heavy-rail exit snapshot, and the two Transport Department feeds — live special-traffic news and advance arrangements. Plus franchised buses, phase 2, for KMB and LWB.** Out of scope today: Citybus and New Lantao Bus answers, green and red minibus, tram, ferry, taxi, cross-boundary rail and high-speed rail.
 
 > If the request is out of scope, say 「這個問題超出 hk-transport（港交寶）的範圍。」 Leave KMB and ferry programs in hkdata. Do not copy them.
 
 ## Choose a command from the manual
 
-`$SKILL_DIR` is the directory where this skill is installed. The command list grows. This file does not list commands.
+Two entry points, one contract each:
 
 ```bash
-bash ${SKILL_DIR}/mtr.sh
-bash ${SKILL_DIR}/mtr.sh help <command>
+bash ${SKILL_DIR}/mtr.sh      # MTR and its feeders
+bash ${SKILL_DIR}/bus.sh      # franchised buses
 ```
 
 No arguments and `help` print the same page: a short introduction, then one line per command. Read `help <command>` when its arguments are not obvious. stdout of a command is JSON.
 
-If you do not know a station, stop, or line name, run `mtr_lines` first. `mtr_lines --line 東鐵線` lists the stations on one line; `mtr_lines --station 金鐘` lists the lines through one station. The name must match the official spelling exactly — the file spells 茘枝角 with 茘, not 荔. A station id (`2`) or code (`ADM`) also works, and is never ambiguous.
+If you do not know a station, stop or line name, look it up first. MTR: `mtr_lines --line` or `--station`. Bus: `bus_stops_near` for stops near a place, `bus_route` for the stops on a route. Names must match the official spelling exactly — the MTR file spells 茘枝角 with 茘, not 荔. A station id (`2`) or code (`ADM`) also works for MTR; a stop id works for buses.
 
 ## When a name does not match
 
-A command may answer 「找不到車站：…」 or 「找不到路線：…」, or 「這個站不在這條線上。」 That means the input did not match the published name — not that the place has no station.
+A command may answer 「找不到車站：…」, 「找不到路線：…」, 「400 米內找不到巴士站」, or 「這個站不在這條線上。」 That means the input did not match the published name — not that the place has no service.
 
-- Do not guess a similar station, and do not re-run the same input expecting a different result.
-- Run `mtr_lines` to check the official spelling — `--line` for the stations on a line, `--station` for the lines through a station — then run the command again with that name, the station id, or the code.
-- Check the line as well as the station: a correct station name on the wrong line is still a failure. `mtr_lines --station` settles which lines serve it.
-- Common traps: 茘枝角 is spelled with 茘; English names use the published form (`Tsim Sha Tsui`, `AsiaWorld-Expo`); 中環, 香港 and 機場快線香港站 are different names for one interchange area.
-- If it still does not resolve, say the skill cannot find that station. Do not substitute a nearby one.
+- Do not guess a similar place, and do not re-run the same input expecting a different result.
+- Look the name up with `mtr_lines` or `bus_stops_near`, then run the command again.
+- Check the line as well as the station: a correct station on the wrong line fails the same way.
+- Common traps: 茘枝角 is spelled with 茘; English names use the published form (`Tsim Sha Tsui`, `AsiaWorld-Expo`); 中環, 香港 and 機場快線香港站 are names for one interchange area.
+- If it still does not resolve, say the skill cannot find it. Do not substitute a nearby place.
 
 ## When a name matches more than one station
 
@@ -59,7 +61,19 @@ Answer the person in Traditional Chinese.
 - If `data` is null, say `note`. Do not fill the gap.
 - Quote `note`. Do not rewrite it into a stronger claim.
 - A distance you compute from coordinates is straight-line, not walking time.
+
+### Buses
+
+- A bus journey answers with **options**, not one best route. Present them as alternatives and let the person choose. Never call one 最快 or 最好: cost is transfers then stops, not minutes.
+- A bus fare is the **adult full fare** for boarding that route. It is not a section fare, and it excludes concessions and transfer discounts. Several legs mean several boardings; say the total is the sum of adult fares, not the amount the person will pay.
+- `journey_time_minutes` is the whole route's published running time, not the segment ridden. Never present it as the trip time.
+- Bus answers cover **KMB and LWB**. A journey will not include Citybus, NLB or minibuses, and cannot transfer between operators — say so when it changes the answer.
+- Service hours, headway and low-floor access have no data. The commands answer `null` and say why; do not estimate them.
+- A disruption match is a keyword hit in Transport Department notices. No match does not mean no disruption, and notices do not always name routes.
+
+### Everywhere else
+
 - An accessibility answer says what the file says. A lift is 「閘外區域」(outside the paid area) or 「已付車費區域」(inside it), and the exit it serves. Do not upgrade that to "goes to the street" — the file never states a level. A lift marked 非港鐵管理 is not maintained by MTR but is still there; say so. An exit written 「A 和 D 出口」 covers both exits and cannot be split.
 - If no command covers the question, say this skill has no data for it.
-- If the script exits with an error, report that message. Do not guess a train or a fare.
+- If the script exits with an error, report that message. Do not guess a train, a bus or a fare.
 - Run a command once per question. Do not poll, and never loop on the traffic feeds.
