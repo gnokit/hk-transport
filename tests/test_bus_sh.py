@@ -6,7 +6,6 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "bus.sh"
 
 COMMANDS = (
-    "bus_journey",
     "bus_route",
     "bus_stops_near",
     "bus_direct",

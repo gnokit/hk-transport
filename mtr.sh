@@ -109,19 +109,6 @@ def _commands() -> tuple[Command, ...]:
             ),
         ),
         Command(
-            "mtr_journey",
-            "Path and transfers between two stations",
-            (
-                "One path: which line to ride, where to transfer, and the stations in between.",
-                "No journey minutes. Fewer transfers first, then fewer stops.",
-            ),
-            lambda ns: mtr_journey(_required(ns.origin), _required(ns.destination)),
-            (
-                Arg("origin", "Origin station, in Chinese or English.", metavar="origin"),
-                Arg("destination", "Destination station, in Chinese or English.", metavar="destination"),
-            ),
-        ),
-        Command(
             "mtr_fare",
             "Heavy-rail fare between two stations",
             (

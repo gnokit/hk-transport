@@ -39,6 +39,7 @@ Phase 1 ships one entry script, `mtr.sh`. Every later phase adds a sibling scrip
 | 1 | MTR heavy rail, Airport Express, Disneyland Resort Line, Light Rail, feeder buses | `mtr.sh` | ✅ 14 commands |
 | 2 | Franchised buses | `bus.sh` | built, under test |
 | 3 | Green minibus, red minibus | `minibus.sh` | built, under test |
+| — | One journey across every built mode | `journey.sh` | built, under test |
 | 4 | Tram, ferry | `tram.sh`, `ferry.sh` | not started |
 | 5 | Taxi, cross-boundary and high-speed rail | `taxi.sh`, `rail.sh` | not started |
 
@@ -86,12 +87,17 @@ bash mtr.sh mtr_next_train 港島線 金鐘                # ask a question
 
 Each command answers one kind of question. These are phase 1.
 
+**Any journey, every mode**
+
+| Command | Answers |
+|---|---|
+| `journey` | Which lines to ride and where to transfer, across MTR, KMB/LWB and green minibus, with real walking legs |
+
 **Heavy rail**
 
 | Command | Answers |
 |---|---|
 | `mtr_lines` | Which stations a line has, or which lines serve a station |
-| `mtr_journey` | Which line to ride, where to transfer, stations in between |
 | `mtr_fare` | Octopus and single-journey fare, every ticket type in the file |
 | `mtr_airport_express_fare` | Airport Express fare — adult and child only |
 | `mtr_next_train` | Next trains, terminus, platform, and any service alert |
@@ -111,7 +117,6 @@ Each command answers one kind of question. These are phase 1.
 
 | Command | Answers |
 |---|---|
-| `minibus_journey` | Several minibus routes between two places, with transfers |
 | `minibus_route` | Stop order of one route, or whether it serves a place |
 | `minibus_stops_near` | Minibus stops near a place, with straight-line distance |
 | `minibus_direct` | One-ride routes between two places |

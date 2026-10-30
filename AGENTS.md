@@ -2,7 +2,7 @@
 
 這個倉庫是港交寶（`hk-transport`），一個 AI agent skill。第一階段的港鐵部分已實作。代理指示在 [SKILL.md](SKILL.md)。回答市民時用 `mtr.sh`，`$SKILL_DIR` 是安裝目錄：`bash ${SKILL_DIR}/mtr.sh` 列出命令，`bash ${SKILL_DIR}/mtr.sh help <command>` 看該命令。新的公開函式要在 `mtr.sh` 加子命令。開工前先讀 [docs/TASKS.md](docs/TASKS.md)。那份文件是第一階段的範圍。
 
-程式分兩層。`src/hk_transport/mtr_core.py` 一個函式包一份港鐵數據。`src/hk_transport/als.py` 的 `address_lookup` 包地政總署地址查詢，是位置問題的核心，不快取。`src/hk_transport/exits.py` 的 `mtr_exits` 讀重鐵出入口座標，那是約一年有效的快照，查詢時不重新下載。`src/hk_transport/notices.py` 包運輸署特別交通消息和特別交通及運輸安排，全港交通都在內，不快取，也不按港鐵篩選。`src/hk_transport/mtr.py` 用這些函式回答市民的問題，裡面沒有 URL，也沒有快取。新的問題組合現有核心函式。新的數據源才加一個核心函式。第二階段加了 `bus_core.py`（一份巴士資源一個函式）、`bus.py`（十條市民問題十個函式）、`_graph.py`（兩種模式共用的尋路）同 `bus.sh`。第三階段加了 `minibus_core.py`、`minibus.py` 同 `minibus.sh`；地名解析同步行半徑搬到 `_places.py`，尋路建圖搬到 `_graph.build`，兩邊共用，唔再各寫一份。`geocode.py` 的 `place_search` 包地政總署 GeoInfo Map 的地點搜尋，是地名問題的核心，不快取；`bus.py` 用它把「南生圍」這類地名變成一個點，`als.py` 只在它找不到時做門牌後備。三份共用的東西各有去處：`_result.py` 是信封同 `compose`，`_http.py` 是下載同 30 日快取，`_values.py` 是讀一格。
+程式分兩層。`src/hk_transport/mtr_core.py` 一個函式包一份港鐵數據。`src/hk_transport/als.py` 的 `address_lookup` 包地政總署地址查詢，是位置問題的核心，不快取。`src/hk_transport/exits.py` 的 `mtr_exits` 讀重鐵出入口座標，那是約一年有效的快照，查詢時不重新下載。`src/hk_transport/notices.py` 包運輸署特別交通消息和特別交通及運輸安排，全港交通都在內，不快取，也不按港鐵篩選。`src/hk_transport/mtr.py` 用這些函式回答市民的問題，裡面沒有 URL，也沒有快取。新的問題組合現有核心函式。新的數據源才加一個核心函式。第二階段加了 `bus_core.py`（一份巴士資源一個函式）、`bus.py`（十條市民問題十個函式）、`_graph.py`（兩種模式共用的尋路）同 `bus.sh`。第三階段加了 `minibus_core.py`、`minibus.py` 同 `minibus.sh`。跨模式加咗 `journey.py`（三個網絡一張圖）同 `pedroute.py`（地政總署 3D 行人路網）；地名解析同步行半徑搬到 `_places.py`，尋路建圖搬到 `_graph.build`，兩邊共用，唔再各寫一份。`geocode.py` 的 `place_search` 包地政總署 GeoInfo Map 的地點搜尋，是地名問題的核心，不快取；`bus.py` 用它把「南生圍」這類地名變成一個點，`als.py` 只在它找不到時做門牌後備。三份共用的東西各有去處：`_result.py` 是信封同 `compose`，`_http.py` 是下載同 30 日快取，`_values.py` 是讀一格。
 
 每月 CSV 的副本在技能目錄的 `.cache/`，30 日後重新下載。`.gitignore` 已忽略這個目錄。測試用 `HK_TRANSPORT_CACHE` 指到暫存目錄。實時 API 不寫入快取。出入口快照在 `src/hk_transport/data/mtr_exits.json`，不放進 `.cache/`。同一個進程內另有一份記憶快取（`mtr_core._memory`），避免一次回答內重複解析同一份表；`clear_cache()` 清。
 
@@ -59,6 +59,15 @@ uv run pytest -m live -o addopts=
 - 同一個 `stop_id` 在不同路線可以有不同站名，但座標一樣。站名取決於你查嗰條線。
 - 冇「全線下一班」端點，只有 `/eta/stop/{stop_id}` 同 `/eta/route-stop/{route_id}/{route_seq}/{stop_seq}`。所以只給路線答唔到。
 - 紅色小巴冇固定路線、公開站表、公開車費；只可以答「冇數據」。
+
+## 跨模式行程裡容易答錯的地方
+
+- **一個 `journey` 答所有點對點問題。** 舊的 `mtr_journey`、`bus_journey`、`minibus_journey` 已由入口移除（函式仍在庫內，俾單一模式的測試用）。
+- **排序係加權，唔係時間。** 一次轉車當 100 個站，一個站當 100 米步行（`_TRANSFER`、`_STOP`、`_WALK_WEIGHT`）。呢三個係政策數字，唔係量度；答案要講明。
+- **步行用真路網。** `pedroute.walk_route` 用地政總署 3D 行人路網，交還真距離同時間。路網冇覆蓋（例如南生圍）會 `found: false`，該段標 `estimated: true` 並保留直線距離——唔可以當成真步行路線。
+- **唔可以答總時間。** 乘車時間冇數據，只有步行分鐘。加起來講「全程幾耐」就係編造。
+- **純步行方案唔會出現。** 搜尋要求至少一段乘車；如果最便宜其實係行路，答案會講接不上，唔會叫你行。
+- **城巴、新大嶼山、電車、渡輪未接入。** 答案短可能係因為呢個，要在 note 講。
 
 ## 地名解析裡容易答錯的地方
 

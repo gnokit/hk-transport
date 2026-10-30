@@ -6,7 +6,6 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "minibus.sh"
 
 COMMANDS = (
-    "minibus_journey",
     "minibus_route",
     "minibus_stops_near",
     "minibus_direct",
@@ -73,9 +72,8 @@ def test_a_command_without_data_prints_the_envelope():
 
 
 def test_numeric_options_have_defaults_in_the_manual():
-    result = _run("help", "minibus_journey")
-    assert "Default 3" in result.stdout
-    assert "Default 400" in result.stdout
+    result = _run("help", "minibus_stops_near")
+    assert "Default 8" in result.stdout
 
 
 def test_script_is_executable():

@@ -62,7 +62,7 @@ def test_help_without_a_command_matches_no_arguments():
 
 
 def test_help_command_is_a_manual_page():
-    result = _run("help", "mtr_journey")
+    result = _run("help", "mtr_fare")
     assert result.returncode == 0
     assert result.stderr == ""
     text = result.stdout
@@ -70,8 +70,8 @@ def test_help_command_is_a_manual_page():
     assert "SYNOPSIS\n" in text
     assert "DESCRIPTION\n" in text
     assert "ARGUMENTS\n" in text
-    assert "mtr.sh mtr_journey origin destination" in text
-    assert "mtr_fare" not in text
+    assert "mtr.sh mtr_fare origin destination" in text
+    assert "mtr_lines" not in text
 
 
 def test_unknown_help_command_fails():

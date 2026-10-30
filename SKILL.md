@@ -26,6 +26,7 @@ Answer a Hong Kong transport question by running one of this skill's scripts. Do
 Two entry points, one contract each:
 
 ```bash
+bash ${SKILL_DIR}/journey.sh  # any point-to-point journey, all modes together
 bash ${SKILL_DIR}/mtr.sh      # MTR and its feeders, plus place search
 bash ${SKILL_DIR}/bus.sh      # franchised buses
 bash ${SKILL_DIR}/minibus.sh  # green minibuses
@@ -69,9 +70,20 @@ Answer the person in Traditional Chinese.
 - Quote `note`. Do not rewrite it into a stronger claim.
 - A distance you compute from coordinates is straight-line, not walking time.
 
+### One journey
+
+Any point-to-point question goes to `journey.sh journey`. It searches the railway, the buses and the green minibuses as **one graph**, with walking at both ends and between stops.
+
+- **Ranking is transfers, then stops, then walking.** One transfer counts as 100 stops, one stop as 100 metres of walking. Say that when the person asks why one option is first.
+- **Walking is real, not straight-line.** Metres and minutes come from the Lands Department pedestrian network. A leg marked `estimated: true` means that network had no route and the figure is straight-line — say which it is.
+- **There is no riding time.** Never add up a total duration. The walk minutes are the only minutes the answer contains.
+- **Scope: MTR, KMB/LWB, green minibus.** Citybus, NLB, tram, ferry, taxi and cross-boundary rail are not in the graph. When the answer looks short, that may be why.
+- No fares are included; use the per-mode fare commands.
+
 ### Buses
 
-- A bus journey answers with **options**, not one best route. Present them as alternatives and let the person choose. Never call one 最快 or 最好: cost is transfers then stops, not minutes.
+- Single-mode lists still exist (`mtr_fare`, `bus_route`, `minibus_route`), but journeys are answered by `journey.sh` only.
+- Options, not one best route. Present them as alternatives and let the person choose. Never call one 最快 or 最好: cost is transfers then stops, not minutes.
 - A bus fare is the **adult full fare** for boarding that route. It is not a section fare, and it excludes concessions and transfer discounts. Several legs mean several boardings; say the total is the sum of adult fares, not the amount the person will pay.
 - `journey_time_minutes` is the whole route's published running time, not the segment ridden. Never present it as the trip time.
 - Bus answers cover **KMB and LWB**. A journey will not include Citybus, NLB or minibuses, and cannot transfer between operators — say so when it changes the answer.

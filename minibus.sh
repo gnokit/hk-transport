@@ -87,43 +87,6 @@ class Command:
 def _commands() -> tuple[Command, ...]:
     return (
         Command(
-            "minibus_journey",
-            "Green minibus routes between two places, with transfers",
-            (
-                "Several ways to travel, each with its legs, transfers and walking.",
-                "Cost is transfers then stops, never minutes. Options are not ranked.",
-                "Fare is not included; use minibus_fare for each route.",
-                "Green minibus only. A transfer between operators cannot be found.",
-                "The origin and destination are one resolved point, not a whole district.",
-            ),
-            lambda ns: minibus_journey(
-                _required(ns.origin),
-                _required(ns.destination),
-                options=ns.options,
-                walk=ns.walk,
-            ),
-            (
-                Arg("origin", "Origin place, stop name, or stop id.", metavar="origin"),
-                Arg("destination", "Destination place, stop name, or stop id.", metavar="destination"),
-                Arg(
-                    "options",
-                    "How many distinct routes to return. Default 3.",
-                    flag="--options",
-                    metavar="count",
-                    kind=int,
-                    default=3,
-                ),
-                Arg(
-                    "walk",
-                    "Walking radius in metres. Default 400.",
-                    flag="--walk",
-                    metavar="metres",
-                    kind=int,
-                    default=400,
-                ),
-            ),
-        ),
-        Command(
             "minibus_route",
             "Stop order of one route, or whether it serves a place",
             (
