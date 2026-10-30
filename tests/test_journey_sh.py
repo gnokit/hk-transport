@@ -34,7 +34,7 @@ def test_help_page_explains_the_weights_and_scope():
     assert result.returncode == 0, result.stderr
     assert "journey.sh journey" in result.stdout
     assert "transfers" in result.stdout
-    assert "Citybus" in result.stdout
+    assert "Peak Tram" in result.stdout
 
 
 def test_missing_argument_exits_two():
