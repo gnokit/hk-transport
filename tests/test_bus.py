@@ -137,3 +137,53 @@ def test_bus_fare_for_an_unknown_route_says_so(monkeypatch):
     result = bus.bus_fare("999")
     assert result["data"] is None
     assert "999" in result["note"]
+
+
+def notices_envelope(rows):
+    return envelope(rows)
+
+
+def test_bus_disruption_matches_a_named_route(monkeypatch):
+    monkeypatch.setattr(
+        bus.notices,
+        "special_traffic_news",
+        lambda: notices_envelope([]),
+    )
+    monkeypatch.setattr(
+        bus.notices,
+        "special_traffic_arrangements",
+        lambda: notices_envelope(
+            [
+                {
+                    "id": "1",
+                    "title_zh": "元朗大棠路臨時交通及運輸安排",
+                    "content_zh": "港鐵巴士路線第K66號的巴士站將臨時遷移。",
+                    "start_date": "19.11.2026",
+                }
+            ]
+        ),
+    )
+    result = bus.bus_disruption("k66")
+    assert len(result["data"]["matches"]) == 1
+    assert result["data"]["matches"][0]["source"] == "arrangement"
+    assert "關鍵字比對" in result["note"]
+
+
+def test_bus_disruption_does_not_match_inside_a_longer_route(monkeypatch):
+    monkeypatch.setattr(bus.notices, "special_traffic_news", lambda: notices_envelope([]))
+    monkeypatch.setattr(
+        bus.notices,
+        "special_traffic_arrangements",
+        lambda: notices_envelope(
+            [{"id": "1", "title_zh": "265B 改道", "content_zh": "265B 路線臨時改道。", "start_date": "1.1.2026"}]
+        ),
+    )
+    result = bus.bus_disruption("26")
+    assert result["data"]["matches"] == []
+    assert "沒有提到這條線" in result["note"]
+
+
+def test_bus_disruption_rejects_something_that_is_not_a_route(monkeypatch):
+    result = bus.bus_disruption("元州邨")
+    assert result["data"] is None
+    assert "唔似巴士路線號碼" in result["note"]
