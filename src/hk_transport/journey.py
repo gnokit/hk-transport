@@ -321,6 +321,8 @@ def _legs(path, graph, origin_point, destination_point) -> list[dict]:
                     to_point["longitude"],
                 )
             )
+            if gap == 0:
+                continue
             legs.append(
                 {
                     "type": "walk",
