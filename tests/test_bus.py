@@ -187,3 +187,10 @@ def test_bus_disruption_rejects_something_that_is_not_a_route(monkeypatch):
     result = bus.bus_disruption("元州邨")
     assert result["data"] is None
     assert "唔似巴士路線號碼" in result["note"]
+
+
+def test_none_options_and_walk_fall_back_to_defaults(monkeypatch):
+    wire(monkeypatch, ROUTES)
+    result = bus.bus_journey("甲站", "乙站", options=None, walk=None)
+    assert result["data"]["options"]
+    assert len(result["data"]["options"]) == 1

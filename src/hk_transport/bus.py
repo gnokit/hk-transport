@@ -183,6 +183,8 @@ def bus_journey(
     只有九巴同龍運；跨營辦商轉車接唔上。冇服務時間數據，所以 N 字頭路線
     會標一個提示，唔會過濾。
     """
+    options = options or 3
+    walk = walk or _WALK
     stops = {row["stop"]: row for row in bus_core.kmb_stops()["data"]}
     sources = [bus_core.kmb_stops()]
     origin_point, origin_note = _place(origin, stops)
@@ -321,6 +323,7 @@ def bus_disruption(route: str, limit: int = 5) -> dict:
     這是關鍵字比對，不是營辦商發出的路線警報；通告未必逐條列出受影響路線，
     所以「冇搵到」不等於「冇事」。純數字路線容易誤中。
     """
+    limit = limit or 5
     token = route.strip().upper()
     if not re.fullmatch(r"[A-Z]{0,2}\d{1,3}[A-Z]?", token):
         return compose([], None, note=f"唔似巴士路線號碼：{route}")
@@ -406,6 +409,7 @@ def bus_stops_near(place: str, limit: int = 8, walk: int = _WALK) -> dict:
 
     只包含九巴／龍運的站。距離是直線距離，不是步行距離。
     """
+    limit = limit or 8
     stops = {row["stop"]: row for row in bus_core.kmb_stops()["data"]}
     sources = [bus_core.kmb_stops()]
     point, note = _place(place, stops)

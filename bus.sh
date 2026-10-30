@@ -51,6 +51,7 @@ class Arg:
     nargs: str | None = None
     kind: type | None = None
     required: bool = False
+    default: object | None = None
 
     @property
     def label(self) -> str:
@@ -103,8 +104,22 @@ def _commands() -> tuple[Command, ...]:
             (
                 Arg("origin", "Origin place, stop name, or stop id.", metavar="origin"),
                 Arg("destination", "Destination place, stop name, or stop id.", metavar="destination"),
-                Arg("options", "How many distinct routes to return.", flag="--options", metavar="count", kind=int),
-                Arg("walk", "Walking radius in metres.", flag="--walk", metavar="metres", kind=int),
+                Arg(
+                    "options",
+                    "How many distinct routes to return. Default 3.",
+                    flag="--options",
+                    metavar="count",
+                    kind=int,
+                    default=3,
+                ),
+                Arg(
+                    "walk",
+                    "Walking radius in metres. Default 400.",
+                    flag="--walk",
+                    metavar="metres",
+                    kind=int,
+                    default=400,
+                ),
             ),
         ),
         Command(
@@ -131,7 +146,14 @@ def _commands() -> tuple[Command, ...]:
             lambda ns: bus_stops_near(_required(ns.place), limit=ns.limit),
             (
                 Arg("place", "Place name, or a stop name or id.", metavar="place"),
-                Arg("limit", "How many stops to return.", flag="--limit", metavar="count", kind=int),
+                Arg(
+                    "limit",
+                    "How many stops to return. Default 8.",
+                    flag="--limit",
+                    metavar="count",
+                    kind=int,
+                    default=8,
+                ),
             ),
         ),
         Command(
@@ -207,7 +229,14 @@ def _commands() -> tuple[Command, ...]:
             lambda ns: bus_disruption(_required(ns.route), limit=ns.limit),
             (
                 Arg("route", "Route number, for example K66.", metavar="route"),
-                Arg("limit", "Maximum notices to return.", flag="--limit", metavar="count", kind=int),
+                Arg(
+                    "limit",
+                    "Maximum notices to return. Default 5.",
+                    flag="--limit",
+                    metavar="count",
+                    kind=int,
+                    default=5,
+                ),
             ),
         ),
         Command(
@@ -292,7 +321,11 @@ def _parser() -> argparse.ArgumentParser:
         item = sub.add_parser(command.name, add_help=False, usage=command.synopsis)
         for arg in command.args:
             if arg.flag:
-                kwargs: dict = {"help": arg.text, "required": arg.required}
+                kwargs: dict = {
+                    "help": arg.text,
+                    "required": arg.required,
+                    "default": arg.default,
+                }
                 if arg.kind is not None:
                     kwargs["type"] = arg.kind
                 item.add_argument(arg.flag, **kwargs)
