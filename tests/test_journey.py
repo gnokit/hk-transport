@@ -192,3 +192,40 @@ def test_a_raw_stop_id_resolves_inside_the_graph(wired):
     assert result["data"] is not None
     assert result["data"]["origin"]["resolved_as"] == "stop"
     assert result["data"]["origin"]["name_zh"] == "巴士一站"
+
+
+def test_a_crowded_corridor_still_links_the_station(monkeypatch):
+    """Twenty bus poles must not crowd out the station 120 m away."""
+    points = {}
+    for i in range(25):
+        points[f"bus:{i}"] = {
+            "point": f"bus:{i}",
+            "mode": "bus",
+            "stop": str(i),
+            "name_zh": f"bus{i}",
+            "name_en": None,
+            "latitude": 22.0,
+            "longitude": 114.0 + i * 0.00001,
+        }
+    points["mtr:1"] = {
+        "point": "mtr:1",
+        "mode": "mtr",
+        "stop": "1",
+        "name_zh": "站",
+        "name_en": None,
+        "latitude": 22.0011,
+        "longitude": 114.0,
+    }
+    adjacency = [[] for _ in range(len(points))]
+    index = {key: n for n, key in enumerate(points)}
+    j._walk_links(points, adjacency, index)
+    linked = [t for t, w, kind, meta in adjacency[index["mtr:1"]] if kind == "walk"]
+    assert linked, "the station is 120 m away and must not be crowded out"
+    assert len(linked) <= j._LINK_NEIGHBOURS
+
+
+def test_every_ride_covers_at_least_one_stop(wired):
+    option = j.journey("巴士一站", "巴士三站")["data"]["options"][0]
+    rides = [leg for leg in option["legs"] if leg["type"] == "ride"]
+    assert rides
+    assert all(leg["stops"] >= 1 for leg in rides)

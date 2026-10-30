@@ -6,17 +6,21 @@ graph:
 - a **point** node is a place you can stand: a bus stop, a minibus stop, a
   tram stop, a ferry pier, or a station (the average of its exit coordinates);
 - a **trip** node is one position on one trip: (mode, trip key, stop order);
-- edges are ride (one stop), board (a transfer), alight, and walk.
+- edges are ride (one stop), board (a transfer, and the first stop), alight,
+  and walk.
+
+Boarding goes straight to the *next* stop on the trip, so a zero-stop ride does
+not exist and a journey must move to count.
 
 Walking happens in three places: from the origin to any point inside the
-radius, between two points within the transfer radius, and from the last
-point to the destination. The search prices walking with straight-line
-distance, then the chosen walk legs are re-priced with the Lands Department
-pedestrian route search, which returns a real path length and time.
+radius, between two points inside the transfer radius, and from the last point
+to the destination. The search prices walking with straight-line distance,
+then the chosen walk legs are re-priced with the Lands Department pedestrian
+route search. A walk that turns out much longer than its straight line bans
+that point pair and the search runs once more.
 
 Cost is transfers, then stops, then walking metres, encoded as one integer for
-a plain Dijkstra. The weights are policy, not measurement, and the answer
-exposes all three parts.
+a plain Dijkstra. The weights are policy, not measurement.
 """
 
 from __future__ import annotations
@@ -40,10 +44,14 @@ from hk_transport._result import compose
 
 _WALK = 800
 _LINK = 300
+_MTR_LINK = 450
+_LINK_NEIGHBOURS = 20
+_PRIORITY_MODES = ("mtr", "ferry", "tram")
+_BAD_WALK_RATIO = 2.5
 _WALK_RETRY = 1500
 _WALK_CAP = 1500
-_LINK_NEIGHBOURS = 8
 _WALK_CALLS = 12
+_END = -1
 
 # One transfer outweighs any number of stops; one stop outweighs any walk
 # inside the cap. Encoded in one integer so a plain Dijkstra can search it.
@@ -249,6 +257,60 @@ def _point_table(bus: dict, gmb_stops: dict, stations: dict) -> dict[str, dict]:
     return points
 
 
+def _walk_links(
+    points: dict[str, dict],
+    adjacency: list[list[tuple]],
+    point_index: dict[str, int],
+) -> None:
+    """Link nearby points, never letting one crowded mode starve the others.
+
+    A station centroid can sit 250 m from its own exits, so a link that touches
+    a station gets the wider radius. The nearest point of each rail or water
+    mode is always kept, then the rest fill up to the neighbour cap, so a
+    corridor full of bus poles cannot crowd out the station 120 m away.
+    """
+    cells: dict[tuple[int, int], list[str]] = defaultdict(list)
+    for key, row in points.items():
+        cells[(int(row["latitude"] / 0.005), int(row["longitude"] / 0.005))].append(key)
+    for key, row in points.items():
+        cell_y, cell_x = int(row["latitude"] / 0.005), int(row["longitude"] / 0.005)
+        near: list[tuple[float, str, str]] = []
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                for other in cells.get((cell_y + dy, cell_x + dx), ()):
+                    if other == key:
+                        continue
+                    other_row = points[other]
+                    limit = (
+                        _MTR_LINK
+                        if row["mode"] == "mtr" or other_row["mode"] == "mtr"
+                        else _LINK
+                    )
+                    gap = _places.distance(
+                        row["latitude"],
+                        row["longitude"],
+                        other_row["latitude"],
+                        other_row["longitude"],
+                    )
+                    if gap <= limit:
+                        near.append((gap, other, other_row["mode"]))
+        near.sort()
+        chosen: dict[str, float] = {}
+        for mode in _PRIORITY_MODES:
+            for gap, other, other_mode in near:
+                if other_mode == mode:
+                    chosen[other] = gap
+                    break
+        for gap, other, _ in near:
+            if len(chosen) >= _LINK_NEIGHBOURS:
+                break
+            chosen.setdefault(other, gap)
+        for other, gap in chosen.items():
+            adjacency[point_index[key]].append(
+                (point_index[other], round(gap) * _WALK_WEIGHT, "walk", ())
+            )
+
+
 def _graph() -> dict:
     """Build the whole network once per process, and keep its sources."""
     global _memory
@@ -279,118 +341,131 @@ def _graph() -> dict:
 
     point_index = {key: index for index, key in enumerate(points)}
     nodes: list[tuple] = [("point", key) for key in points]
-    adjacency: list[list[tuple[int, int, str, tuple]]] = [[] for _ in nodes]
+    adjacency: list[list[tuple]] = [[] for _ in nodes]
 
-    # Board and alight at every point a trip calls at.
+    # Boarding goes straight to the next stop, so every ride moves at least one
+    # stop and the search never needs to remember whether it has ridden.
     for (mode, key), stops in by_trip.items():
         stops.sort()
         if len(stops) < 2:
             continue
         previous = None
-        for position, (_, point) in enumerate(stops):
+        for position in range(1, len(stops)):
             node = len(nodes)
             nodes.append(("trip", (mode, key, position)))
             adjacency.append([])
-            point_node = point_index[point]
-            adjacency[point_node].append((node, _TRANSFER, "board", (mode, key)))
-            adjacency[node].append((point_node, 0, "alight", (mode, key)))
+            board_point = point_index[stops[position - 1][1]]
+            adjacency[board_point].append(
+                (node, _TRANSFER + _STOP, "board", (mode, key))
+            )
+            adjacency[node].append(
+                (point_index[stops[position][1]], 0, "alight", (mode, key))
+            )
             if previous is not None:
                 adjacency[previous].append((node, _STOP, "ride", (mode, key)))
             previous = node
 
-    # Walk links between different points inside the transfer radius.
-    cells: dict[tuple[int, int], list[str]] = defaultdict(list)
-    for key, row in points.items():
-        cells[(int(row["latitude"] / 0.005), int(row["longitude"] / 0.005))].append(key)
-    for key, row in points.items():
-        near: list[tuple[float, str]] = []
-        cell_y, cell_x = int(row["latitude"] / 0.005), int(row["longitude"] / 0.005)
-        for dy in (-1, 0, 1):
-            for dx in (-1, 0, 1):
-                for other in cells.get((cell_y + dy, cell_x + dx), ()):
-                    if other == key:
-                        continue
-                    gap = _places.distance(
-                        row["latitude"],
-                        row["longitude"],
-                        points[other]["latitude"],
-                        points[other]["longitude"],
-                    )
-                    if gap <= _LINK:
-                        near.append((gap, other))
-        near.sort()
-        for gap, other in near[:_LINK_NEIGHBOURS]:
-            adjacency[point_index[key]].append(
-                (point_index[other], round(gap) * _WALK_WEIGHT, "walk", ())
-            )
+    _walk_links(points, adjacency, point_index)
 
     _memory = {
         "points": points,
         "point_index": point_index,
         "nodes": nodes,
         "adjacency": adjacency,
-        "cells": cells,
         "labels": labels,
         "sources": sources,
+        "point_key": {
+            index: node[1] for index, node in enumerate(nodes) if node[0] == "point"
+        },
     }
     return _memory
 
 
 def _nearby(
     points: dict[str, dict],
-    cell_index: dict,
     latitude: float,
     longitude: float,
     radius: float,
-):
-    cell_y, cell_x = int(latitude / 0.005), int(longitude / 0.005)
+) -> list[tuple[float, str]]:
     found = []
-    for dy in (-1, 0, 1):
-        for dx in (-1, 0, 1):
-            for key in cell_index.get((cell_y + dy, cell_x + dx), ()):
-                row = points[key]
-                gap = _places.distance(latitude, longitude, row["latitude"], row["longitude"])
-                if gap <= radius:
-                    found.append((gap, key))
+    for key, row in points.items():
+        gap = _places.distance(latitude, longitude, row["latitude"], row["longitude"])
+        if gap <= radius:
+            found.append((gap, key))
     found.sort()
     return found
 
 
-def _dijkstra(adjacency, start: int, end: int, penalty: set | None = None):
-    """Shortest path that must ride at least once and may not chain walks."""
-    best = {(start, False, False): 0}
-    previous: dict[tuple[int, bool, bool], tuple[tuple[int, bool, bool], str, tuple]] = {}
-    queue = [(0, start, False, False)]
+def _dijkstra(
+    adjacency: list[list[tuple]],
+    starts: list[tuple[int, int]],
+    end_weights: dict[int, int],
+    point_key: dict[int, str],
+    penalty: set | None = None,
+    banned: set | None = None,
+    hard_ban: set | None = None,
+):
+    """Shortest path that must ride, may not chain walks, and may end anywhere.
+
+    The end is not an edge: reaching a destination point without having just
+    walked adds its walk cost. That keeps the adjacency immutable, so a query
+    no longer copies 80,000 lists.
+    """
+    best: dict[tuple[int, bool], int] = {}
+    previous: dict[tuple[int, bool], tuple[tuple[int, bool] | None, str, tuple]] = {}
+    queue: list[tuple[int, int, bool]] = []
+    for cost, node in starts:
+        state = (node, True)
+        if cost < best.get(state, math.inf):
+            best[state] = cost
+            previous[state] = (None, "start", (point_key.get(node),))
+            heapq.heappush(queue, (cost, node, True))
+
     goal = None
     while queue:
-        cost, node, walked, ridden = heapq.heappop(queue)
-        state = (node, walked, ridden)
+        cost, node, walked = heapq.heappop(queue)
+        state = (node, walked)
         if cost > best.get(state, math.inf):
             continue
-        if node == end:
+        if node == _END:
             goal = state
             break
+        if not walked and node in end_weights:
+            total = cost + end_weights[node]
+            end_state = (_END, True)
+            if total < best.get(end_state, math.inf):
+                best[end_state] = total
+                previous[end_state] = (state, "end", (point_key.get(node),))
+                heapq.heappush(queue, (total, _END, True))
         for target, weight, kind, meta in adjacency[node]:
-            stepping = kind in {"walk", "start"}
+            stepping = kind in {"walk"}
             if stepping and walked:
                 continue
-            if kind == "end" and not ridden:
+            if kind == "walk" and banned:
+                pair = frozenset((point_key.get(node), point_key.get(target)))
+                if pair in banned:
+                    continue
+            if hard_ban and kind == "board" and meta in hard_ban:
                 continue
             step = weight
             if penalty and kind == "board" and meta in penalty:
-                step = weight * 4
+                step = weight + _TRANSFER
             candidate = cost + step
-            nxt = (target, stepping, ridden or kind == "ride")
+            nxt = (target, stepping)
             if candidate < best.get(nxt, math.inf):
                 best[nxt] = candidate
                 previous[nxt] = (state, kind, meta)
-                heapq.heappush(queue, (candidate, target, nxt[1], nxt[2]))
+                heapq.heappush(queue, (candidate, target, stepping))
+
     if goal is None:
         return None
     path = []
     state = goal
-    while state[0] != start:
+    while True:
         before, kind, meta = previous[state]
+        if before is None:
+            path.append((None, state[0], kind, meta))
+            break
         path.append((before[0], state[0], kind, meta))
         state = before
     path.reverse()
@@ -400,45 +475,53 @@ def _dijkstra(adjacency, start: int, end: int, penalty: set | None = None):
 def _legs(path, graph, origin_point, destination_point) -> list[dict]:
     """Turn an edge path into walk and ride legs."""
     points = graph["points"]
-    count = len(graph["nodes"])
     legs: list[dict] = []
     ride = None
 
     def point_of(node: int) -> dict:
-        if node >= count:
-            return origin_point if node == count else destination_point
+        if node == _END:
+            return destination_point
         return points[graph["nodes"][node][1]]
 
+    def walk_leg(from_point: dict, to_point: dict, from_key, to_key) -> None:
+        gap = round(
+            _places.distance(
+                from_point["latitude"],
+                from_point["longitude"],
+                to_point["latitude"],
+                to_point["longitude"],
+            )
+        )
+        if gap == 0:
+            return
+        legs.append(
+            {
+                "type": "walk",
+                "metres": gap,
+                "from": {
+                    "name_zh": from_point["name_zh"],
+                    "latitude": from_point["latitude"],
+                    "longitude": from_point["longitude"],
+                },
+                "to": {
+                    "name_zh": to_point["name_zh"],
+                    "latitude": to_point["latitude"],
+                    "longitude": to_point["longitude"],
+                },
+                "from_point": from_key,
+                "to_point": to_key,
+            }
+        )
+
     for source, target, kind, meta in path:
-        if kind in {"start", "walk", "end"}:
-            from_point = point_of(source)
-            to_point = point_of(target)
-            gap = round(
-                _places.distance(
-                    from_point["latitude"],
-                    from_point["longitude"],
-                    to_point["latitude"],
-                    to_point["longitude"],
-                )
-            )
-            if gap == 0:
-                continue
-            legs.append(
-                {
-                    "type": "walk",
-                    "metres": gap,
-                    "from": {
-                        "name_zh": from_point["name_zh"],
-                        "latitude": from_point["latitude"],
-                        "longitude": from_point["longitude"],
-                    },
-                    "to": {
-                        "name_zh": to_point["name_zh"],
-                        "latitude": to_point["latitude"],
-                        "longitude": to_point["longitude"],
-                    },
-                }
-            )
+        if kind == "start":
+            walk_leg(origin_point, point_of(target), None, meta[0])
+            continue
+        if kind == "walk":
+            walk_leg(point_of(source), point_of(target), meta[0] if meta else graph["nodes"][source][1], graph["nodes"][target][1])
+            continue
+        if kind == "end":
+            walk_leg(point_of(source), destination_point, meta[0], None)
             continue
         if kind == "board":
             mode, key = meta[0], meta[1]
@@ -451,7 +534,7 @@ def _legs(path, graph, origin_point, destination_point) -> list[dict]:
                 "operator": label.get("operator"),
                 "board": points[graph["nodes"][source][1]]["name_zh"],
                 "alight": None,
-                "stops": 0,
+                "stops": 1,
                 "board_point": graph["nodes"][source][1],
             }
             legs.append(ride)
@@ -466,14 +549,13 @@ def _legs(path, graph, origin_point, destination_point) -> list[dict]:
     return legs
 
 
-def _start_edges(graph, latitude: float, longitude: float, radius: float):
-    return list(
-        _nearby(graph["points"], graph["cells"], latitude, longitude, radius)
-    )
+def _price_walks(legs: list[dict], budget: _WalkBudget, sources: list[dict]) -> set:
+    """Replace straight-line walk metres with the pedestrian network, in place.
 
-
-def _price_walks(legs: list[dict], budget: _WalkBudget, sources: list[dict]) -> None:
-    """Replace straight-line walk metres with the pedestrian network, in place."""
+    Returns the point pairs where the real walk is far longer than the straight
+    line, so the caller can ban them and search again.
+    """
+    bad: set = set()
     for leg in legs:
         if leg["type"] != "walk":
             continue
@@ -483,6 +565,7 @@ def _price_walks(legs: list[dict], budget: _WalkBudget, sources: list[dict]) -> 
         if not budget.take():
             leg["estimated"] = True
             continue
+        straight = leg["metres"]
         try:
             result = pedroute.walk_route(
                 leg["from"]["latitude"],
@@ -496,11 +579,67 @@ def _price_walks(legs: list[dict], budget: _WalkBudget, sources: list[dict]) -> 
         sources.append(result)
         data = result["data"] or {}
         if data.get("found"):
-            leg["straight_line_metres"] = leg["metres"]
+            leg["straight_line_metres"] = straight
             leg["metres"] = round(data["metres"])
             leg["minutes"] = round(data["minutes"], 1)
+            if (
+                data["metres"] > straight * _BAD_WALK_RATIO
+                and leg.get("from_point")
+                and leg.get("to_point")
+            ):
+                bad.add(frozenset((leg["from_point"], leg["to_point"])))
         else:
             leg["estimated"] = True
+    return bad
+
+
+def _search(graph, starts, end_weights, options: int, banned: set, origin_point, destination_point) -> list[dict]:
+    chosen: list[dict] = []
+    seen: set[tuple] = set()
+    penalty: set = set()
+    hard_ban: set = set()
+    keys_by_label: dict[tuple, set] = defaultdict(set)
+    for (mode, key), label in graph["labels"].items():
+        keys_by_label[(mode, label["operator"], label["route"])].add(key)
+    for _ in range(options * 2):
+        path = _dijkstra(
+            graph["adjacency"],
+            starts,
+            end_weights,
+            graph["point_key"],
+            penalty,
+            banned,
+            hard_ban,
+        )
+        if path is None:
+            break
+        legs = _legs(path, graph, origin_point, destination_point)
+        rides = [leg for leg in legs if leg["type"] == "ride"]
+        if not rides:
+            break
+        signature = tuple(
+            (leg["mode"], leg.get("route"), leg["board_point"], leg["alight_point"])
+            for leg in rides
+        )
+        for leg in rides:
+            penalty.update(
+                keys_by_label.get((leg["mode"], leg.get("operator"), leg.get("route")), set())
+            )
+        if signature in seen:
+            hard_ban.update(leg["trip"] for leg in rides)
+            continue
+        seen.add(signature)
+        chosen.append(
+            {
+                "transfers": max(len(rides) - 1, 0),
+                "stops": sum(leg["stops"] for leg in rides),
+                "walk_metres": sum(leg["metres"] for leg in legs if leg["type"] == "walk"),
+                "legs": legs,
+            }
+        )
+        if len(chosen) >= options:
+            break
+    return chosen
 
 
 def journey(
@@ -523,8 +662,8 @@ def journey(
     唔係時間；乘車時間冇數據，只有步行時間來自行人路網。
     山頂纜車、的士、高鐵未接入，跨出這個範圍的組合接唔上。
 
-    地名由地政總署地點搜尋解析，所以 `sources` 只列網絡同步行來源；
-    地名解析的來源見 `geocode.place_search` 自己的信封。
+    每一次 boarding 都至少坐一個站；純步行方案唔會出現。
+    地名由地政總署地點搜尋解析，所以 `sources` 只列網絡同步行來源。
     """
     options = options or 3
     walk = walk or _WALK
@@ -538,76 +677,51 @@ def journey(
     if end_point is None:
         return compose(sources, None, note=note)
 
-    starts = _start_edges(graph, start_point["latitude"], start_point["longitude"], walk)
-    ends = _start_edges(graph, end_point["latitude"], end_point["longitude"], walk)
+    wide = max(walk, _WALK_RETRY)
+    origin_edges = _nearby(points, start_point["latitude"], start_point["longitude"], walk)
+    target_edges = _nearby(points, end_point["latitude"], end_point["longitude"], walk)
     widened = ""
-    if not starts or not ends:
-        wide = max(walk, _WALK_RETRY)
-        starts = starts or _start_edges(
-            graph, start_point["latitude"], start_point["longitude"], wide
+    if not origin_edges or not target_edges:
+        origin_edges = origin_edges or _nearby(
+            points, start_point["latitude"], start_point["longitude"], wide
         )
-        ends = ends or _start_edges(
-            graph, end_point["latitude"], end_point["longitude"], wide
+        target_edges = target_edges or _nearby(
+            points, end_point["latitude"], end_point["longitude"], wide
         )
         widened = f"最近站超過 {walk} 米，已自動放寬到 {wide} 米。"
-    if not starts:
-        return compose(sources, None, note=f"起點 {walk} 米內沒有已接入的站。")
-    if not ends:
-        return compose(sources, None, note=f"終點 {walk} 米內沒有已接入的站。")
+    if not origin_edges:
+        return compose(sources, None, note=f"起點 {wide} 米內沒有已接入的站。")
+    if not target_edges:
+        return compose(sources, None, note=f"終點 {wide} 米內沒有已接入的站。")
 
-    start_index = len(graph["nodes"])
-    end_index = start_index + 1
-    adjacency = [list(edges) for edges in graph["adjacency"]]
-    adjacency.extend([[], []])
-    for gap, key in starts:
-        adjacency[start_index].append(
-            (graph["point_index"][key], round(gap) * _WALK_WEIGHT, "start", (key,))
-        )
-    for gap, key in ends:
-        adjacency[graph["point_index"][key]].append(
-            (end_index, round(gap) * _WALK_WEIGHT, "end", (key,))
-        )
-
+    starts = [
+        (round(gap) * _WALK_WEIGHT, graph["point_index"][key]) for gap, key in origin_edges
+    ]
+    end_weights = {
+        graph["point_index"][key]: round(gap) * _WALK_WEIGHT for gap, key in target_edges
+    }
+    banned: set = set()
     chosen: list[dict] = []
-    seen: set[tuple] = set()
-    penalty: set = set()
-    for _ in range(options * 2):
-        path = _dijkstra(adjacency, start_index, end_index, penalty)
-        if path is None:
+    walk_sources: list[dict] = []
+    for attempt in range(2):
+        chosen = _search(graph, starts, end_weights, options, banned, start_point, end_point)
+        if not chosen:
             break
-        legs = _legs(path, graph, start_point, end_point)
-        rides = [leg for leg in legs if leg["type"] == "ride"]
-        if not rides:
+        budget = _WalkBudget()
+        walk_sources = []
+        bad: set = set()
+        for option in chosen:
+            bad |= _price_walks(option["legs"], budget, walk_sources)
+            option["walk_metres"] = sum(
+                leg["metres"] for leg in option["legs"] if leg["type"] == "walk"
+            )
+        if not bad or attempt == 1:
             break
-        signature = tuple(
-            (leg["mode"], leg.get("route"), leg["board_point"], leg["alight_point"])
-            for leg in rides
-        )
-        for leg in rides:
-            penalty.add(leg["trip"])
-        if signature in seen:
-            continue
-        seen.add(signature)
-        chosen.append(
-            {
-                "transfers": max(len(rides) - 1, 0),
-                "stops": sum(leg["stops"] for leg in rides),
-                "walk_metres": sum(leg["metres"] for leg in legs if leg["type"] == "walk"),
-                "legs": legs,
-            }
-        )
-        if len(chosen) >= options:
-            break
+        banned = bad
+    sources.extend(walk_sources)
 
     if not chosen:
         return compose(sources, None, note=NOTE + "這兩個地方在已接入的網絡上接不上。")
-
-    budget = _WalkBudget()
-    for option in chosen:
-        _price_walks(option["legs"], budget, sources)
-        option["walk_metres"] = sum(
-            leg["metres"] for leg in option["legs"] if leg["type"] == "walk"
-        )
 
     kept = [option for option in chosen if option["walk_metres"] <= _WALK_CAP]
     if not kept:
