@@ -193,4 +193,4 @@ def test_none_options_and_walk_fall_back_to_defaults(monkeypatch):
     wire(monkeypatch, ROUTES)
     result = bus.bus_journey("甲站", "乙站", options=None, walk=None)
     assert result["data"]["options"]
-    assert len(result["data"]["options"]) == 1
+    assert result["data"]["options"][0]["transfers"] == 0
