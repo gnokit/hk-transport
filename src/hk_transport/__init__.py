@@ -15,6 +15,19 @@ from hk_transport.bus import (
 )
 from hk_transport.exits import mtr_exits
 from hk_transport.geocode import place_search
+from hk_transport.minibus import (
+    minibus_accessibility,
+    minibus_direct,
+    minibus_disruption,
+    minibus_eta,
+    minibus_fare,
+    minibus_frequency,
+    minibus_journey,
+    minibus_route,
+    minibus_service_hours,
+    minibus_stops_near,
+    red_minibus,
+)
 from hk_transport.mtr import (
     light_rail,
     light_rail_next,
@@ -53,6 +66,17 @@ __all__ = [
     "mtr_journey",
     "mtr_lines",
     "mtr_next_train",
+    "minibus_accessibility",
+    "minibus_direct",
+    "minibus_disruption",
+    "minibus_eta",
+    "minibus_fare",
+    "minibus_frequency",
+    "minibus_journey",
+    "minibus_route",
+    "minibus_service_hours",
+    "minibus_stops_near",
+    "red_minibus",
     "place_search",
     "mtr_ride_estimate",
     "special_traffic_arrangements",

@@ -12,7 +12,7 @@
 
 2026-10-30：第二階段的 10 條目標市民問題已寫入下面「第二階段 — 專營巴士」。同日寫下實作任務：`bus_core.py`（一份資源一個函式）、`_graph.py`（共用尋路）、`bus.py`（十條問題十個函式）、`bus.sh`。路線搜尋交還多個方案，成本係（轉車次數、停站數），唔係時間。同日完成十個函式同入口，開始聯合測試；測試期間加入 `geocode.py`（地政總署地名搜尋），修正「南生圍」被解成中西區的問題。
 
-2026-10-30：第三階段的 10 條目標市民問題同數據源已寫入下面「第三階段 — 綠色專線小巴同紅色小巴」，未有程式。實時 API 端點已抽樣，確認路線號碼只在區域內唯一、`/route-stop` 冇座標。
+2026-10-30：第三階段建好。`minibus_core.py`（8 個函式）、`minibus.py`（11 個答案函式，含紅色小巴）、`minibus.sh`（11 個命令）。同時把地名解析搬到 `_places.py`、建圖搬到 `_graph.build`，兩個模式共用。取樣發現運輸署的 `JSON_GMB.json` 已經有齊站序同座標，所以原本計劃的站快照唔需要。
 
 | 任務 | 指令 | 狀態 |
 |---|---|---|
@@ -391,7 +391,7 @@
 
 **測試：** `tests/test_geocode.py`（方格轉經緯、URL 編碼、排序警告、缺座標、limit、空查詢、非陣列回應）；`tests/test_bus.py` 加四條（地名用搜尋結果、跨區候選不隱藏、設施名不贏過地方本身、搜尋空時退到 ALS）。
 
-## 第三階段 — 綠色專線小巴同紅色小巴（未開始）
+## 第三階段 — 綠色專線小巴同紅色小巴（2026-10-30 已建，聯合測試中）
 
 範圍：綠色專線小巴（GMB）全部路線。紅色小巴同樣在範圍內，但**冇官方路線、站、車費數據**，所以這一類問題的答案係明確講「冇」，唔係估。專營巴士（第二階段）同港鐵（第一階段）不重做。第一階段已建的共用部分（`_result`、`_http`、`_values`、`notices`、`geocode`、`_graph`）沿用，不複製。
 
@@ -453,7 +453,26 @@
 3. **GMB 站快照要唔要 commit 入 repo。** 九巴的做法是 commit（694 KB）；綠巴站更多，要先量體積。
 4. **優先次序：B-28（活動特別線當正規線）同 B-29（冇步行轉乘邊）建議在第三階段之前修。** 小巴線短、轉車多，冇步行轉乘邊會令小巴旅程比巴士更常兜大圈。
 
-### T3.0 前置核實（未開始）
+### T3.0 前置核實（2026-10-30 已完成）
+
+取樣結果，改變了原本的快照計劃：
+
+| 項目 | 結果 |
+|---|---|
+| **`JSON_GMB.json` 有齊路線、車費、站序同座標** | 20.6 MB，13,165 個 feature（一站一列），帶 `routeId`、`district`、`routeSeq`、`stopId`、`stopSeq`、`stopNameC`、`fullFare`、`journeyTime`、WGS84 座標。**不需要由 etagmb 建快照。** |
+| 路線變體 | 1,167 個（`routeId` × `routeSeq` × `serviceMode` × `specialType`） |
+| 路線號碼 | 480 個，其中 **87 個在兩個或以上區域出現** |
+| 停車位置 | 4,779 個 `stop_id` |
+| `stopPickDrop` | 值 1／2／3；1 同 2 各 1,167 次（每個變體一個），3 是中途站。字典冇解釋，只照交還 |
+| 檔案編碼 | 有 UTF-8 BOM；用二進位讀取時要跳過 |
+| `stopId` 對齊 | TD 的 `stopId` 同 etagmb 的 `stop_id` **完全一樣**，`routeId` 亦一樣，唔需要用名去對 |
+| 實時端點 | `/route`、`/route/{region}`、`/route/{region}/{code}`、`/stop/{id}`、`/stop-route/{id}`、`/eta/stop/{id}`、`/eta/route-stop/{id}/{seq}/{stop_seq}` 全部通 |
+| 全線下一班 | **冇**：`/eta/route/...`、`/route-eta/...` 都 404 → 只給路線答唔到 |
+| 速率 | 連續 6 個 `/stop` 用 4.5 秒，冇 429／403 |
+| 紅色小巴 | 冇官方路線、站、車費數據 |
+
+結論：**#1、#2、#3、#4、#6、#7、#9 有數據；#5、#8、#10 冇數據；紅色小巴全程冇數據。**
+原本計劃的「站快照」同 `scripts/build_gmb_route_stops.py` 唔需要，因為 TD 一個檔案已經有齊站序同座標。
 
 - 對 TD 小巴車費 CSV 取樣：欄位名稱、成人價、分段價、總站座標、更新時間。
 - 數一次全港綠巴路線同站的總數（三個區域相加），決定快照大小。
@@ -462,7 +481,7 @@
 - 確認紅色小巴真的冇官方路線／站／車費數據，記下依據（哪個頁、哪一句）。
 - 確認小巴有冇低地台或無障礙欄位；預計冇。
 
-### T3.1 `src/hk_transport/minibus_core.py` — 一份數據資源一個函式
+### T3.1 `src/hk_transport/minibus_core.py` — 一份數據資源一個函式（2026-10-30 已完成）
 
 只讀一份資源、交還整份表、不篩選、不組合、不解析地名。靜態部分用 `_http` 的 30 日快取，實時 ETA 不快取。
 
@@ -475,37 +494,37 @@
 | `gmb_stop_routes(stop_id)` | `/stop-route/{id}` | 該站有邊幾條線 |
 | `gmb_stop_eta(stop_id)` | `/eta/stop/{id}` | 該站各線下一班 |
 | `td_gmb_fares()` | `hk-td-tis_3` 的小巴 CSV | 成人全程車費、總站、分段收費 |
-| `gmb_route_stops_all()` | **快照** `data/gmb_route_stops.json` | 全部路線的站序同座標，唔上網 |
-| `gmb_download_route_stops()` | `/route-stop` ＋ `/stop` | 重建快照用，工具唔會叫 |
+| `gmb_stops()` | 由站序去重 | 4,779 個停車位置 |
+| `gmb_route_stop_eta(route_id, route_seq, stop_seq)` | `/eta/route-stop/...` | 一條線一個站序的下一班 |
 
-### T3.2 `src/hk_transport/_graph.py` — 重用，唔另寫
+### T3.2 `src/hk_transport/_graph.py` — 重用，唔另寫（2026-10-30 已完成）
 
 節點鍵由（路線、方向、服務類型、站）擴成（**營辦商**、區域、路線、`route_seq`、站）。第一階段同第二階段的現有測試要照跑，證明改動冇整壞重鐵同巴士。
 
-### T3.3 `src/hk_transport/minibus.py` — 一條市民問題一個函式
+### T3.3 `src/hk_transport/minibus.py` — 一條市民問題一個函式（2026-10-30 已完成）
 
 `minibus_journey`、`minibus_route`、`minibus_stops_near`、`minibus_direct`、`minibus_fare`、`minibus_service_hours`、`minibus_frequency`、`minibus_eta`、`minibus_disruption`、`minibus_accessibility`。
 
 地名解析沿用 `geocode.place_search`；步行半徑內冇站時，照第二階段的做法講最近那個站同直線距離。
 
-### T3.4 `minibus.sh` — 入口
+### T3.4 `minibus.sh` — 入口（2026-10-30 已完成）
 
 同 `mtr.sh`、`bus.sh` 同一套：`Command` / `Arg` 表、`argparse`、功能表、`help <command>`、stdout 係 JSON。數值選項要有預設值，唔可以傳 `None` 落函式。
 
-### T3.5 測試
+### T3.5 測試（2026-10-30 已完成）
 
 - `tests/test_minibus_core.py` — 解析 fixture、缺欄留空、錯誤帶資料集、區域撞號
 - `tests/test_minibus.py` — 每個 use case 至少一條；冇資料時講 note；跨營辦商要講明接唔上
 - `tests/test_minibus_sh.py` — 功能表、缺參數、envelope、預設值
 - `live` 標記：三個區域各一個路線抽樣、一個 `/stop` 抽樣、一個 ETA 抽樣
 
-### T3.6 文件
+### T3.6 文件（2026-10-30 已完成）
 
 - `SKILL.md` — scope 加小巴，description 加觸發詞（小巴、綠巴、專線小巴），加小巴的答法
 - `AGENTS.md` — 加 `minibus_core.py`、`minibus.py`、`minibus.sh`，加小巴 quirk（區域撞號、`/route-stop` 冇座標、循環線）
 - `README.md` / `README.zh.md` — 第三階段狀態、指令表
 - `TASKS.md` — 進度同完成標準
 
-### T3.7 完成標準
+### T3.7 完成標準（2026-10-30 已達到）
 
 十條問題每一條都答得到，或者明講答唔到；每個答案帶資料集、端點、數據時間；`minibus_journey` 交還多個方案而唔排名；跨營辦商接唔上要照講；紅色小巴明確講冇數據；離線測試通過；三個區域各有一個 live 抽樣；第一、二階段的測試仍然全綠。

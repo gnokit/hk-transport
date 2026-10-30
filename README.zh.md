@@ -38,7 +38,7 @@
 |---|---|---|---|
 | 1 | 港鐵重鐵、機場快線、迪士尼線、輕鐵、接駁巴士 | `mtr.sh` | ✅ 14 個指令 |
 | 2 | 專營巴士 | `bus.sh` | 已建，測試中 |
-| 3 | 綠色專線小巴、紅色小巴 | `minibus.sh` | 未開始 |
+| 3 | 綠色專線小巴、紅色小巴 | `minibus.sh` | 已建，測試中 |
 | 4 | 電車、渡輪 | `tram.sh`、`ferry.sh` | 未開始 |
 | 5 | 的士、跨境鐵路同高速鐵路 | `taxi.sh`、`rail.sh` | 未開始 |
 
@@ -107,6 +107,24 @@ bash mtr.sh mtr_next_train 港島線 金鐘                # 問一條問題
 | `light_rail_next` | 一個站即將開出的班次，特別班會標明 |
 | `mtr_bus` | 接駁巴士停站、以路線計的車費、各站下一班 |
 
+**綠色專線小巴**
+
+| 指令 | 回答 |
+|---|---|
+| `minibus_journey` | 兩個地方之間的幾個小巴方案，連轉車 |
+| `minibus_route` | 一條路線的停站順序，或經不經一個地方 |
+| `minibus_stops_near` | 一個地方附近的小巴站同直線距離 |
+| `minibus_direct` | 兩個地方之間有沒有小巴一程過 |
+| `minibus_fare` | 成人全程車費同公布全程時間 |
+| `minibus_eta` | 一個站下一班小巴 |
+| `minibus_service_hours` | 沒有數據，照講 |
+| `minibus_frequency` | 沒有數據，照講 |
+| `minibus_disruption` | 運輸署通告有提到這條線的 |
+| `minibus_accessibility` | 沒有數據，照講 |
+| `red_minibus` | 沒有數據；紅色小巴沒有固定路線 |
+
+小巴路線號碼只在區域內唯一（`HKI`、`KLN`、`NT`），所以號碼在多個區域出現時，指令要 `--region`。
+
 **位置與交通消息**
 
 | 指令 | 回答 |
@@ -156,7 +174,7 @@ graph LR
 
 ## 資料來源與授權
 
-數據來自 [DATA.GOV.HK](https://data.gov.hk)：港鐵 4 個數據集，加地政總署的地址查詢、地理位置搜尋同坐標轉換，以及運輸署的特別交通消息同特別交通及運輸安排。使用時受其[條款](https://data.gov.hk/tc/terms-and-conditions)約束。
+數據來自 [DATA.GOV.HK](https://data.gov.hk)：港鐵 4 個數據集，專營巴士同綠色專線小巴的路線、車費同實時到站，加地政總署的地址查詢、地點搜尋同坐標轉換，以及運輸署的特別交通消息同特別交通及運輸安排。使用時受其[條款](https://data.gov.hk/tc/terms-and-conditions)約束。
 
 這個專案的程式以 [MIT 授權](LICENSE) 發布。這個授權只涵蓋程式：`src/hk_transport/data/mtr_exits.json` 是由地政總署數據衍生的快照，仍然受 data.gov.hk 條款約束——見 [NOTICE](NOTICE)。
 

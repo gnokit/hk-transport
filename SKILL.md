@@ -7,16 +7,17 @@ description: >
   exit (出口), barrier-free facilities (無障礙設施), an address (地址), or a
   traffic disruption (交通消息). Also use for franchised buses (巴士, 九巴,
   城巴): which route (搭咩車), stops (巴士站), fare (車費), next bus (下一班),
-  or whether a route is disrupted (改道). Also /hk-transport. Not minibus,
-  tram, ferry, or high-speed rail.
-compatibility: Requires uv and Python >=3.13. $SKILL_DIR is the directory that contains mtr.sh and bus.sh.
+  or whether a route is disrupted (改道). Also green minibus (小巴, 綠巴,
+  專線小巴): which route, stops, fare, next minibus. Also /hk-transport.
+  Not tram, ferry, or high-speed rail.
+compatibility: Requires uv and Python >=3.13. $SKILL_DIR is the directory that contains mtr.sh, bus.sh and minibus.sh.
 ---
 
 # hk-transport（港交寶）
 
 Answer a Hong Kong transport question by running one of this skill's scripts. Do not write a fetcher. Do not invent a figure a command did not return.
 
-**Scope: MTR heavy rail, Airport Express, Disneyland Resort Line, Light Rail, MTR feeder buses, address lookup, the heavy-rail exit snapshot, and the two Transport Department feeds — live special-traffic news and advance arrangements. Plus franchised buses, phase 2, for KMB and LWB.** Out of scope today: Citybus and New Lantao Bus answers, green and red minibus, tram, ferry, taxi, cross-boundary rail and high-speed rail.
+**Scope: MTR heavy rail, Airport Express, Disneyland Resort Line, Light Rail, MTR feeder buses, address lookup, the heavy-rail exit snapshot, and the two Transport Department feeds — live special-traffic news and advance arrangements. Plus franchised buses (KMB and LWB) and green minibuses.** Out of scope today: Citybus and New Lantao Bus answers, tram, ferry, taxi, cross-boundary rail and high-speed rail.
 
 > If the request is out of scope, say 「這個問題超出 hk-transport（港交寶）的範圍。」 Leave KMB and ferry programs in hkdata. Do not copy them.
 
@@ -25,8 +26,9 @@ Answer a Hong Kong transport question by running one of this skill's scripts. Do
 Two entry points, one contract each:
 
 ```bash
-bash ${SKILL_DIR}/mtr.sh      # MTR and its feeders
+bash ${SKILL_DIR}/mtr.sh      # MTR and its feeders, plus place search
 bash ${SKILL_DIR}/bus.sh      # franchised buses
+bash ${SKILL_DIR}/minibus.sh  # green minibuses
 ```
 
 No arguments and `help` print the same page: a short introduction, then one line per command. Read `help <command>` when its arguments are not obvious. stdout of a command is JSON.
@@ -75,6 +77,16 @@ Answer the person in Traditional Chinese.
 - Bus answers cover **KMB and LWB**. A journey will not include Citybus, NLB or minibuses, and cannot transfer between operators — say so when it changes the answer.
 - Service hours, headway and low-floor access have no data. The commands answer `null` and say why; do not estimate them.
 - A disruption match is a keyword hit in Transport Department notices. No match does not mean no disruption, and notices do not always name routes.
+
+### Minibuses
+
+- **A route code is unique only inside a district.** `37` exists in more than one of `HKI`, `KLN`, `NT`. When a code matches several, the answer lists all of them — say which district, and never narrow it to one yourself.
+- A minibus journey is green minibus only. It cannot use a bus or the railway, and cannot transfer between operators. Say so when it changes the answer.
+- The fare is the **adult full fare** for boarding that route. It is not a section fare, and it excludes every concession.
+- `journey_time_minutes` is the whole route's published time, not the segment ridden.
+- Real-time arrivals need **a stop**. There is no whole-route next-bus endpoint, so a route alone cannot be answered; ask for the stop.
+- Service hours, headway and low-floor access have no data. Those commands answer `null` and say why; do not estimate.
+- **Red minibuses have no fixed routes, no published stops and no fares.** `red_minibus` answers that and nothing more.
 
 ### Everywhere else
 

@@ -2,7 +2,7 @@
 
 這個倉庫是港交寶（`hk-transport`），一個 AI agent skill。第一階段的港鐵部分已實作。代理指示在 [SKILL.md](SKILL.md)。回答市民時用 `mtr.sh`，`$SKILL_DIR` 是安裝目錄：`bash ${SKILL_DIR}/mtr.sh` 列出命令，`bash ${SKILL_DIR}/mtr.sh help <command>` 看該命令。新的公開函式要在 `mtr.sh` 加子命令。開工前先讀 [docs/TASKS.md](docs/TASKS.md)。那份文件是第一階段的範圍。
 
-程式分兩層。`src/hk_transport/mtr_core.py` 一個函式包一份港鐵數據。`src/hk_transport/als.py` 的 `address_lookup` 包地政總署地址查詢，是位置問題的核心，不快取。`src/hk_transport/exits.py` 的 `mtr_exits` 讀重鐵出入口座標，那是約一年有效的快照，查詢時不重新下載。`src/hk_transport/notices.py` 包運輸署特別交通消息和特別交通及運輸安排，全港交通都在內，不快取，也不按港鐵篩選。`src/hk_transport/mtr.py` 用這些函式回答市民的問題，裡面沒有 URL，也沒有快取。新的問題組合現有核心函式。新的數據源才加一個核心函式。第二階段加了 `bus_core.py`（一份巴士資源一個函式）、`bus.py`（十條市民問題十個函式）、`_graph.py`（兩種模式共用的尋路）同 `bus.sh`。`geocode.py` 的 `place_search` 包地政總署 GeoInfo Map 的地點搜尋，是地名問題的核心，不快取；`bus.py` 用它把「南生圍」這類地名變成一個點，`als.py` 只在它找不到時做門牌後備。三份共用的東西各有去處：`_result.py` 是信封同 `compose`，`_http.py` 是下載同 30 日快取，`_values.py` 是讀一格。
+程式分兩層。`src/hk_transport/mtr_core.py` 一個函式包一份港鐵數據。`src/hk_transport/als.py` 的 `address_lookup` 包地政總署地址查詢，是位置問題的核心，不快取。`src/hk_transport/exits.py` 的 `mtr_exits` 讀重鐵出入口座標，那是約一年有效的快照，查詢時不重新下載。`src/hk_transport/notices.py` 包運輸署特別交通消息和特別交通及運輸安排，全港交通都在內，不快取，也不按港鐵篩選。`src/hk_transport/mtr.py` 用這些函式回答市民的問題，裡面沒有 URL，也沒有快取。新的問題組合現有核心函式。新的數據源才加一個核心函式。第二階段加了 `bus_core.py`（一份巴士資源一個函式）、`bus.py`（十條市民問題十個函式）、`_graph.py`（兩種模式共用的尋路）同 `bus.sh`。第三階段加了 `minibus_core.py`、`minibus.py` 同 `minibus.sh`；地名解析同步行半徑搬到 `_places.py`，尋路建圖搬到 `_graph.build`，兩邊共用，唔再各寫一份。`geocode.py` 的 `place_search` 包地政總署 GeoInfo Map 的地點搜尋，是地名問題的核心，不快取；`bus.py` 用它把「南生圍」這類地名變成一個點，`als.py` 只在它找不到時做門牌後備。三份共用的東西各有去處：`_result.py` 是信封同 `compose`，`_http.py` 是下載同 30 日快取，`_values.py` 是讀一格。
 
 每月 CSV 的副本在技能目錄的 `.cache/`，30 日後重新下載。`.gitignore` 已忽略這個目錄。測試用 `HK_TRANSPORT_CACHE` 指到暫存目錄。實時 API 不寫入快取。出入口快照在 `src/hk_transport/data/mtr_exits.json`，不放進 `.cache/`。同一個進程內另有一份記憶快取（`mtr_core._memory`），避免一次回答內重複解析同一份表；`clear_cache()` 清。
 
@@ -50,6 +50,15 @@ uv run pytest -m live -o addopts=
 - 搵站時要考慮步行半徑內**所有**站，唔可以只取最近幾個，否則會漏掉直達路線。
 - 路線搜尋交還多個方案，按路線組合去重；成本係（轉車、段數），唔係時間。
 - 跨營辦商轉車接唔上，要照講。服務時間、班次、低地台冇數據，答「冇」。
+
+## 小巴資料裡容易答錯的地方
+
+- **路線號碼只在區域內唯一。** 480 個號碼，其中 87 個在兩個或以上區域出現（HKI／KLN／NT）。只用號碼會撞；答案要講區域，唔可以代市民揀。
+- 車費同站序來自運輸署 `JSON_GMB.json`（`hk-td-tis_3`，20 MB，30 日快取，有 BOM）。實時到站來自 `data.etagmb.gov.hk`（`hk-td-sm_7`）。兩邊的 `route_id` 同 `stop_id` **完全一樣**，唔需要用名去對。
+- `stopPickDrop` 係上落客限制代碼（1、2、3），數據字典冇解釋；工具照交還，唔用佢判斷可唔可以上車。
+- 同一個 `stop_id` 在不同路線可以有不同站名，但座標一樣。站名取決於你查嗰條線。
+- 冇「全線下一班」端點，只有 `/eta/stop/{stop_id}` 同 `/eta/route-stop/{route_id}/{route_seq}/{stop_seq}`。所以只給路線答唔到。
+- 紅色小巴冇固定路線、公開站表、公開車費；只可以答「冇數據」。
 
 ## 地名解析裡容易答錯的地方
 

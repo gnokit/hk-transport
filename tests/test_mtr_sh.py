@@ -5,7 +5,14 @@ from pathlib import Path
 from hk_transport import __all__ as PUBLIC
 
 # bus.sh owns the bus commands; this script owns the rest.
-MTR_PUBLIC = tuple(name for name in PUBLIC if not name.startswith("bus_"))
+OTHER_SCRIPTS = ("bus.sh", "minibus.sh")
+MTR_PUBLIC = tuple(
+    name
+    for name in PUBLIC
+    if not name.startswith("bus_")
+    and not name.startswith("minibus_")
+    and name != "red_minibus"
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "mtr.sh"

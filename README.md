@@ -38,7 +38,7 @@ Phase 1 ships one entry script, `mtr.sh`. Every later phase adds a sibling scrip
 |---|---|---|---|
 | 1 | MTR heavy rail, Airport Express, Disneyland Resort Line, Light Rail, feeder buses | `mtr.sh` | ✅ 14 commands |
 | 2 | Franchised buses | `bus.sh` | built, under test |
-| 3 | Green minibus, red minibus | `minibus.sh` | not started |
+| 3 | Green minibus, red minibus | `minibus.sh` | built, under test |
 | 4 | Tram, ferry | `tram.sh`, `ferry.sh` | not started |
 | 5 | Taxi, cross-boundary and high-speed rail | `taxi.sh`, `rail.sh` | not started |
 
@@ -106,6 +106,24 @@ Each command answers one kind of question. These are phase 1.
 | `light_rail` | Stop order on a route, or the fare between two stops |
 | `light_rail_next` | Next departures from one stop, special departures marked |
 | `mtr_bus` | Feeder-bus stops, per-route fare, and next arrivals |
+
+**Green minibus**
+
+| Command | Answers |
+|---|---|
+| `minibus_journey` | Several minibus routes between two places, with transfers |
+| `minibus_route` | Stop order of one route, or whether it serves a place |
+| `minibus_stops_near` | Minibus stops near a place, with straight-line distance |
+| `minibus_direct` | One-ride routes between two places |
+| `minibus_fare` | Adult full fare and published whole-route time |
+| `minibus_eta` | Next minibuses at a stop |
+| `minibus_service_hours` | No data; says so |
+| `minibus_frequency` | No data; says so |
+| `minibus_disruption` | Transport Department notices that mention a route |
+| `minibus_accessibility` | No data; says so |
+| `red_minibus` | No data; red minibuses have no fixed routes |
+
+A minibus route code is unique only inside a district (`HKI`, `KLN`, `NT`), so commands take `--region` when the code exists in more than one.
 
 **Location and traffic**
 
