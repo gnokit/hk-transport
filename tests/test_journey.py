@@ -252,3 +252,54 @@ def test_the_peak_tram_is_kept_out_of_the_journey_graph(monkeypatch):
     modes = {mode for (mode, _key) in j._graph()["labels"]}
     assert "peaktram" not in modes
     assert "tram" in modes
+
+
+def test_a_night_route_is_tagged(wired, monkeypatch):
+    monkeypatch.setattr(
+        j.bus_core,
+        "td_bus_route_stops",
+        lambda: envelope(
+            [
+                td_row("KMB", "N241", 200, 1, "B1", "巴士一站", 22.0, 114.0),
+                td_row("KMB", "N241", 200, 2, "B2", "巴士二站", 22.01, 114.01),
+                td_row("KMB", "N241", 200, 3, "B3", "巴士三站", 22.03, 114.03),
+            ]
+        ),
+    )
+    j.clear_cache()
+    result = j.journey("巴士一站", "巴士二站")
+    option = result["data"]["options"][0]
+    assert option["overnight_hint"] is True
+    assert "通宵" in result["note"]
+
+
+def test_a_day_route_ranks_before_a_night_route(wired, monkeypatch):
+    """The night route is cheaper on paper; the day route still comes first."""
+    rows = [
+        td_row("KMB", "N241", 200, 1, "B1", "巴士一站", 22.0, 114.0),
+        td_row("KMB", "N241", 200, 2, "B2", "巴士二站", 22.01, 114.01),
+        td_row("KMB", "R1", 100, 1, "B1", "巴士一站", 22.0, 114.0),
+        td_row("KMB", "R1", 100, 2, "B2", "巴士二站", 22.01, 114.01),
+    ]
+    monkeypatch.setattr(j.bus_core, "td_bus_route_stops", lambda: envelope(rows))
+    j.clear_cache()
+    result = j.journey("巴士一站", "巴士二站", options=2)
+    assert result["data"]["options"][0]["legs"][0]["route"] == "R1"
+    assert any(option["overnight_hint"] for option in result["data"]["options"])
+
+
+def test_cross_boundary_coaches_are_not_in_the_graph(wired, monkeypatch):
+    """XB only meets other XB at the border, so it could route via 皇崗."""
+    monkeypatch.setattr(
+        j.bus_core,
+        "td_bus_route_stops",
+        lambda: envelope(
+            [
+                td_row("XB", "旺角 - 皇崗", 300, 1, "B1", "巴士一站", 22.0, 114.0),
+                td_row("XB", "旺角 - 皇崗", 300, 2, "B2", "巴士二站", 22.01, 114.01),
+            ]
+        ),
+    )
+    j.clear_cache()
+    modes = j._graph()["labels"]
+    assert not any(label["operator"] == "XB" for label in modes.values())

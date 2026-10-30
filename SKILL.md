@@ -79,6 +79,7 @@ Any point-to-point question goes to `journey.sh journey`. It searches the railwa
 
 - **Ranking is a policy, not a measurement.** One stop counts as 2 minutes, walking as 15 minutes per kilometre, and waiting for the next vehicle as 4 minutes (MTR, tram) to 25 (ferry). Say that when the person asks why one option is first — and never present it as a journey time.
 - **Walking is real, not straight-line.** Metres and minutes come from the Lands Department pedestrian network. A leg marked `estimated: true` means that network had no route and the figure is straight-line — say which it is.
+- **Night routes are marked and ranked last.** A route code starting with `N` gets `overnight_hint: true` and sorts after every day option. Say so when it appears — there is no service-hours data, so the flag is a warning, not a timetable.
 - **There is no riding time.** Never add up a total duration. The walk minutes are the only minutes the answer contains.
 - **Scope: MTR, KMB/LWB, Citybus, NLB, MTR feeder buses, green minibus, tram, ferry, plus a few outlying-island and cross-boundary routes.** The Peak Tram, taxi and high-speed rail are **not** in the graph — the Peak Tram deliberately, because its queue is the real cost and we have no data for it. When the answer looks short, that may be why.
 - No fares are included; use the per-mode fare commands.

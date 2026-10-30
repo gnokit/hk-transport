@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import heapq
 import math
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 
@@ -52,11 +53,16 @@ _PRIORITY_MODES = ("mtr", "ferry", "tram")
 # boarding price would be a guess dressed as a fact. `tram.sh peak_tram`
 # answers "how much, which stops" on its own. See TASKS.md, 第四階段.
 _EXCLUDED_MODES = ("peaktram",)
+# Cross-boundary coaches (companyCode XB) exist to cross the border, and the
+# only place they share is the border itself. Keeping them lets a domestic trip
+# route 觀塘 → 荃灣 by way of 皇崗, which is nonsense. Drop them.
+_EXCLUDED_COMPANIES = ("XB",)
 _BAD_WALK_RATIO = 2.5
 _WALK_RETRY = 1500
 _WALK_CAP = 1500
 _WALK_CALLS = 12
 _END = -1
+_OVERNIGHT = re.compile(r"^N\d")
 
 # The routing policy. There is no ride-time data in Hong Kong, so these are
 # judgements, not measurements: the answer never prints them, it only ranks.
@@ -138,6 +144,8 @@ def _trip_rows(
     """One row per stop per trip, for every network in the graph."""
     rows: list[dict] = []
     for row in bus["data"]:
+        if row["company"] in _EXCLUDED_COMPANIES:
+            continue
         rows.append(
             {
                 "mode": "bus",
@@ -582,6 +590,7 @@ def _legs(path, graph, origin_point, destination_point) -> list[dict]:
                 "mode": mode,
                 "trip": (mode, key),
                 "route": label.get("route"),
+                "overnight": bool(_OVERNIGHT.match(label.get("route") or "")),
                 "operator": label.get("operator"),
                 "board": points[graph["nodes"][source][1]]["name_zh"],
                 "alight": None,
@@ -700,6 +709,7 @@ def _search(graph, starts, end_weights, options: int, banned: set, origin_point,
         chosen.append(
             {
                 "transfers": max(len(rides) - 1, 0),
+                "overnight_hint": any(leg.get("overnight") for leg in rides),
                 "stops": sum(leg["stops"] for leg in rides),
                 "walk_metres": sum(leg["metres"] for leg in legs if leg["type"] == "walk"),
                 "legs": legs,
@@ -799,13 +809,23 @@ def journey(
         extra = f"每個方案的總步行都超過 {_WALK_CAP} 米，這裡只列最短的一個。"
     else:
         extra = ""
-    kept.sort(key=lambda option: option["score"])
+    # A night route may be the cheapest on paper, but at 2 pm it may not run.
+    # There is no service-hours data, so the only honest move is to rank it
+    # below every day option and say so.
+    kept.sort(key=lambda option: (option["overnight_hint"], option["score"]))
+    shown = kept[:options]
+    overnight = sum(1 for option in shown if option["overnight_hint"])
+    if overnight:
+        extra += (
+            f"其中 {overnight} 個方案用通宵線（N 字頭），日間未必有車。"
+            "服務時間同班次冇數據，請向營辦商確認。"
+        )
     return compose(
         sources,
         {
             "origin": start_point,
             "destination": end_point,
-            "options": kept[:options],
+            "options": shown,
         },
         note=NOTE + widened + extra,
     )
