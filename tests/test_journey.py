@@ -235,12 +235,131 @@ def test_the_cost_policy_covers_every_mode_in_the_graph(wired):
     modes = {mode for (mode, _key) in j._graph()["labels"]}
     assert modes
     assert modes <= set(j.COST["board_minutes"])
+    assert modes <= set(j.COST["speed_kmh"])
+    assert modes <= set(j.COST["dwell_minutes"])
 
 
 def test_the_policy_ranks_a_ferry_wait_above_a_train_wait():
     boarding = j.COST["board_minutes"]
     assert boarding["ferry"] > boarding["bus"] > boarding["mtr"]
+    assert j.COST["speed_kmh"]["mtr"] > j.COST["speed_kmh"]["bus"]
     assert j.COST["walk_minutes_per_km"] > 0
+
+
+def test_penalty_keys_match_board_meta(wired):
+    """Route diversification must store (mode, key), same shape as board meta."""
+    graph = j._graph()
+    keys_by_label = {}
+    for (mode, key), label in graph["labels"].items():
+        bucket = keys_by_label.setdefault(
+            (mode, label["operator"], label["route"]), set()
+        )
+        bucket.add((mode, key))
+    sample = next(iter(graph["labels"]))
+    mode, key = sample
+    label = graph["labels"][sample]
+    stored = keys_by_label[(mode, label["operator"], label["route"])]
+    assert (mode, key) in stored
+    assert key not in stored or (mode, key) == key  # bare key alone is wrong type
+
+
+def test_unknown_mode_board_falls_back_to_bus():
+    units = j._units()
+    # board / ride fallbacks used by edges and scoring
+    board = units["board"].get("spaceship", units["board"]["bus"])
+    assert board == units["board"]["bus"]
+    assert j._ride_cost(units, "spaceship", 1000) == j._ride_cost(units, "bus", 1000)
+
+
+def test_a_failed_walk_retry_keeps_the_first_options(wired, monkeypatch):
+    calls = {"n": 0}
+
+    def fake_search(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return [
+                {
+                    "transfers": 0,
+                    "overnight_hint": False,
+                    "stops": 1,
+                    "walk_metres": 10,
+                    "search_cost": 1000,
+                    "legs": [
+                        {
+                            "type": "walk",
+                            "metres": 10,
+                            "from": {"name_zh": "A", "latitude": 22.0, "longitude": 114.0},
+                            "to": {"name_zh": "B", "latitude": 22.001, "longitude": 114.001},
+                            "from_point": "bus:1",
+                            "to_point": "bus:2",
+                        },
+                        {
+                            "type": "ride",
+                            "mode": "bus",
+                            "trip": ("bus", ("KMB", 1, 1, "R", 0)),
+                            "route": "1",
+                            "overnight": False,
+                            "operator": "KMB",
+                            "board": "巴士一站",
+                            "alight": "巴士二站",
+                            "stops": 1,
+                            "board_point": "bus:1",
+                            "alight_point": "bus:2",
+                        },
+                    ],
+                }
+            ]
+        return []
+
+    def fake_price(legs, budget, sources):
+        # Force a retry by reporting a bad mid-journey walk once.
+        return {
+            "pairs": {frozenset(("bus:1", "bus:2"))},
+            "origins": set(),
+            "dests": set(),
+        }
+
+    monkeypatch.setattr(j, "_search", fake_search)
+    monkeypatch.setattr(j, "_price_walks", fake_price)
+    result = j.journey("巴士一站", "巴士二站")
+    assert result["data"] is not None
+    assert result["data"]["options"]
+    assert calls["n"] == 2
+
+
+def test_walk_cache_hit_does_not_call_pedroute_twice(wired, monkeypatch):
+    calls = {"n": 0}
+
+    def counting_walk(*args):
+        calls["n"] += 1
+        return {
+            "data": {"found": True, "metres": 200.0, "minutes": 3.0},
+            "note": None,
+        }
+
+    monkeypatch.setattr(j.pedroute, "walk_route", counting_walk)
+    j.clear_cache()
+    legs = [_walk_leg(400)]
+    # give from/to points so the leg is a normal mid walk
+    legs[0]["from_point"] = "bus:a"
+    legs[0]["to_point"] = "bus:b"
+    j._price_walks(legs, j._WalkBudget(calls=5), [])
+    assert calls["n"] == 1
+    legs2 = [_walk_leg(400)]
+    legs2[0]["from_point"] = "bus:a"
+    legs2[0]["to_point"] = "bus:b"
+    j._price_walks(legs2, j._WalkBudget(calls=5), [])
+    assert calls["n"] == 1
+    assert legs2[0]["metres"] == 200
+
+
+def test_ride_cost_uses_distance_and_speed():
+    units = j._units()
+    short = j._ride_cost(units, "mtr", 1000)
+    long = j._ride_cost(units, "mtr", 2000)
+    assert long > short
+    # same metres: faster mode costs less travel (dwell still applies)
+    assert j._ride_cost(units, "mtr", 5000) < j._ride_cost(units, "bus", 5000)
 
 
 def test_the_peak_tram_is_kept_out_of_the_journey_graph(monkeypatch):

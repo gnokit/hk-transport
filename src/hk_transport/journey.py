@@ -17,10 +17,11 @@ radius, between two points inside the transfer radius, and from the last point
 to the destination. The search prices walking with straight-line distance,
 then the chosen walk legs are re-priced with the Lands Department pedestrian
 route search. A walk that turns out much longer than its straight line bans
-that point pair and the search runs once more.
+that point pair (or the origin/destination stop) and the search runs once more.
 
-Cost is transfers, then stops, then walking metres, encoded as one integer for
-a plain Dijkstra. The weights are policy, not measurement.
+Cost is policy minutes (board wait + ride distance/speed + dwell + walk),
+encoded as one integer for a plain Dijkstra. The weights are estimates, not
+ETAs or measured ride times.
 """
 
 from __future__ import annotations
@@ -71,17 +72,35 @@ _OVERNIGHT = re.compile(r"^N\d")
 COST = {
     # cost units per policy minute; larger = finer resolution, no other effect
     "units_per_minute": 1000,
-    # one stop of riding
-    "stop_minutes": 2.0,
     # walking, from the policy (not from the pedestrian API, which has its own)
     "walk_minutes_per_km": 15.0,
-    # waiting for the next vehicle, which is the only unpredictable part
+    # waiting for the next vehicle, which is the only unpredictable part.
+    # Estimates (not official ETAs): rail boards cheapest; road modes wait longer.
     "board_minutes": {
-        "mtr": 4.0,
-        "tram": 4.0,
-        "minibus": 7.0,
-        "bus": 7.0,
-        "ferry": 25.0,
+        "mtr": 3.0,
+        "lightrail": 5.0,
+        "tram": 5.0,
+        "bus": 8.0,
+        "minibus": 8.0,
+        "ferry": 20.0,
+    },
+    # cruise speed while riding, by mode. Hop cost = dwell + distance/speed.
+    "speed_kmh": {
+        "mtr": 33.0,
+        "lightrail": 25.0,
+        "tram": 10.0,
+        "bus": 15.0,
+        "minibus": 15.0,
+        "ferry": 20.0,
+    },
+    # seconds-scale stop at each station/pier, converted to policy minutes.
+    "dwell_minutes": {
+        "mtr": 0.4,
+        "lightrail": 0.3,
+        "tram": 0.2,
+        "bus": 0.3,
+        "minibus": 0.25,
+        "ferry": 1.0,
     },
 }
 
@@ -89,30 +108,72 @@ COST = {
 def _units() -> dict:
     """Turn the policy table into integer edge weights.
 
-    Read this next to `COST`: one stop is `stop_minutes`, one metre of walking
-    is `walk_minutes_per_km / 1000`, and boarding costs the mode's wait plus the
-    first stop. No tier dominates another; a transfer is simply priced.
+    Read this next to `COST`: boarding is `board_minutes`, one metre of walking
+    is `walk_minutes_per_km / 1000`, and a hop between stops is dwell plus
+    distance at `speed_kmh`. Rail is priced cheaper per board and faster per km
+    than road modes; the numbers are estimates, not ETAs.
     """
     scale = COST["units_per_minute"]
     return {
-        "stop": int(COST["stop_minutes"] * scale),
         "walk": COST["walk_minutes_per_km"] / 1000 * scale,
         "board": {
-            mode: int(minutes * scale)
+            mode: round(minutes * scale)
             for mode, minutes in COST["board_minutes"].items()
         },
+        "dwell": {
+            mode: round(minutes * scale)
+            for mode, minutes in COST["dwell_minutes"].items()
+        },
+        "speed_kmh": dict(COST["speed_kmh"]),
     }
 
-NOTE = (
-    "排序用政策權重，唔係時間：一個站當 2 分鐘，轉車按模式當 4 分鐘（港鐵、電車）到 25 分鐘（渡輪），"
-    "步行一公里當 15 分鐘。呢啲係假設，唔係量度出嚟的時間。"
-    "已接入：港鐵、九巴／龍運、城巴、新大嶼山、港鐵巴士、綠色專線小巴、電車、渡輪，以及少量離島同跨境路線。"
-    "未接入：山頂纜車、的士、高鐵。"
-    "步行距離同時間由地政總署行人路網計算，路網冇覆蓋時會改用直線距離並標明。"
-    "起點同終點係按地名解析出嚟的一個點，唔代表整個區域；地名由地政總署地點搜尋解析。"
-)
+
+def _ride_cost(units: dict, mode: str, metres: float) -> int:
+    """Ride weight for metres on a mode: dwell + travel time from speed.
+
+    Unknown modes fall back to bus.
+    """
+    speeds = units["speed_kmh"]
+    dwells = units["dwell"]
+    speed = speeds.get(mode, speeds["bus"])
+    dwell = dwells.get(mode, dwells["bus"])
+    if speed <= 0:
+        speed = speeds["bus"]
+    travel = round((metres / 1000) / speed * 60 * COST["units_per_minute"])
+    return dwell + travel
+
+
+def _note_from_cost() -> str:
+    """Build NOTE from COST so the prose cannot drift from the table."""
+    board = COST["board_minutes"]
+    speed = COST["speed_kmh"]
+    dwell = COST["dwell_minutes"]
+    walk = COST["walk_minutes_per_km"]
+    return (
+        "排序用政策權重，唔係時間：轉車／上車罰分"
+        f"港鐵 {board['mtr']:g}、輕鐵／電車 {board['lightrail']:g}、"
+        f"巴士／小巴 {board['bus']:g}、渡輪 {board['ferry']:g} 分鐘；"
+        f"車速港鐵 {speed['mtr']:g}、輕鐵 {speed['lightrail']:g}、"
+        f"電車 {speed['tram']:g}、巴士／小巴 {speed['bus']:g}、"
+        f"渡輪 {speed['ferry']:g} km/h；"
+        f"每站停站港鐵 {dwell['mtr']:g}、輕鐵 {dwell['lightrail']:g}、"
+        f"電車 {dwell['tram']:g}、巴士 {dwell['bus']:g}、"
+        f"小巴 {dwell['minibus']:g}、渡輪 {dwell['ferry']:g} 分鐘；"
+        f"步行一公里當 {walk:g} 分鐘。"
+        "呢啲係估算假設，唔係量度出嚟的時間。"
+        "已接入：港鐵、九巴／龍運、城巴、新大嶼山、港鐵巴士、綠色專線小巴、電車、渡輪，以及少量離島同跨境路線。"
+        "未接入：山頂纜車、的士、高鐵。"
+        "步行距離同時間由地政總署行人路網計算，路網冇覆蓋時會改用直線距離並標明。"
+        "起點同終點係按地名解析出嚟的一個點，唔代表整個區域；地名由地政總署地點搜尋解析。"
+    )
+
+
+NOTE = _note_from_cost()
 
 _memory: dict | None = None
+# Process-level pedroute cache keyed by rounded (from, to) coords. Survives
+# across journey() calls in the same process; cleared with clear_cache().
+_walk_cache: dict[tuple, dict | None] = {}
 
 
 @dataclass
@@ -129,9 +190,20 @@ class _WalkBudget:
 
 
 def clear_cache() -> None:
-    """Forget the built graph held in this process."""
-    global _memory
+    """Forget the built graph and the pedroute walk cache held in this process."""
+    global _memory, _walk_cache
     _memory = None
+    _walk_cache = {}
+
+
+def _walk_cache_key(
+    from_lat: float, from_lon: float, to_lat: float, to_lon: float
+) -> tuple:
+    """Rounded coord pair; order matters (A→B is not B→A)."""
+    return (
+        (round(from_lat, 5), round(from_lon, 5)),
+        (round(to_lat, 5), round(to_lon, 5)),
+    )
 
 
 def _trip_rows(
@@ -156,7 +228,7 @@ def _trip_rows(
                     row["service_mode"],
                     row["special_type"],
                 ),
-                "seq": row["seq"] or 0,
+                "seq": 0 if row.get("seq") is None else row["seq"],
                 "point": f"bus:{row['stop']}",
                 "stop": row["stop"],
                 "route": row["route"],
@@ -173,7 +245,7 @@ def _trip_rows(
                     row["service_mode"],
                     row["special_type"],
                 ),
-                "seq": row["seq"] or 0,
+                "seq": 0 if row.get("seq") is None else row["seq"],
                 "point": f"minibus:{row['stop']}",
                 "stop": row["stop"],
                 "route": row["route"],
@@ -192,7 +264,7 @@ def _trip_rows(
                     row["service_mode"],
                     row["special_type"],
                 ),
-                "seq": row["seq"] or 0,
+                "seq": 0 if row.get("seq") is None else row["seq"],
                 "point": f"tram:{row['stop']}",
                 "stop": row["stop"],
                 "route": row["route"],
@@ -209,7 +281,7 @@ def _trip_rows(
                     row["service_mode"],
                     row["special_type"],
                 ),
-                "seq": row["seq"] or 0,
+                "seq": 0 if row.get("seq") is None else row["seq"],
                 "point": f"ferry:{row['stop']}",
                 "stop": row["stop"],
                 "route": row["route"],
@@ -222,7 +294,7 @@ def _trip_rows(
             {
                 "mode": "mtr",
                 "key": (row["line_code"], row["direction"]),
-                "seq": row["sequence"] or 0,
+                "seq": 0 if row.get("sequence") is None else row["sequence"],
                 "point": f"mtr:{row['id']}",
                 "stop": row["id"],
                 "route": zh or row["line_code"],
@@ -395,6 +467,7 @@ def _graph() -> dict:
 
     # Boarding goes straight to the next stop, so every ride moves at least one
     # stop and the search never needs to remember whether it has ridden.
+    # Hop weight is dwell + distance/speed between consecutive stop points.
     for (mode, key), stops in by_trip.items():
         stops.sort()
         if len(stops) < 2:
@@ -404,20 +477,32 @@ def _graph() -> dict:
             node = len(nodes)
             nodes.append(("trip", (mode, key, position)))
             adjacency.append([])
-            board_point = point_index[stops[position - 1][1]]
+            from_key = stops[position - 1][1]
+            to_key = stops[position][1]
+            board_point = point_index[from_key]
+            from_row = points[from_key]
+            to_row = points[to_key]
+            metres = _places.distance(
+                from_row["latitude"],
+                from_row["longitude"],
+                to_row["latitude"],
+                to_row["longitude"],
+            )
+            hop = _ride_cost(units, mode, metres)
+            board = units["board"].get(mode, units["board"]["bus"])
             adjacency[board_point].append(
                 (
                     node,
-                    units["board"].get(mode, units["stop"]) + units["stop"],
+                    board + hop,
                     "board",
                     (mode, key),
                 )
             )
             adjacency[node].append(
-                (point_index[stops[position][1]], 0, "alight", (mode, key))
+                (point_index[to_key], 0, "alight", (mode, key))
             )
             if previous is not None:
-                adjacency[previous].append((node, units["stop"], "ride", (mode, key)))
+                adjacency[previous].append((node, hop, "ride", (mode, key)))
             previous = node
 
     _walk_links(points, adjacency, point_index, units)
@@ -508,7 +593,9 @@ def _dijkstra(
                 continue
             step = weight
             if penalty and kind == "board" and meta in penalty:
-                step = weight + units["board"].get(meta[0], 0)
+                step = weight + units["board"].get(
+                    meta[0], units["board"]["bus"]
+                )
             candidate = cost + step
             nxt = (target, stepping)
             if candidate < best.get(nxt, math.inf):
@@ -609,63 +696,78 @@ def _legs(path, graph, origin_point, destination_point) -> list[dict]:
     return legs
 
 
-def _score(option: dict, units: dict) -> int:
-    """The option's cost in policy units, from what is actually shown.
+def _score_after_walks(option: dict, old_walk_metres: float, units: dict) -> int:
+    """Adjust Dijkstra search_cost by the walk-metre delta after pedroute reprice.
 
-    Computed after the walks are re-priced, so the number and the legs agree.
+    Ride costs stay as searched (distance/speed); only the walk portion moves.
     """
-    total = 0
-    for leg in option["legs"]:
-        if leg["type"] == "walk":
-            total += round(leg["metres"] * units["walk"])
-        else:
-            total += units["board"].get(leg["mode"], units["stop"])
-            total += leg["stops"] * units["stop"]
-    return total
+    new_walk = sum(leg["metres"] for leg in option["legs"] if leg["type"] == "walk")
+    return option["search_cost"] + round((new_walk - old_walk_metres) * units["walk"])
 
 
-def _price_walks(legs: list[dict], budget: _WalkBudget, sources: list[dict]) -> set:
+def _price_walks(legs: list[dict], budget: _WalkBudget, sources: list[dict]) -> dict:
     """Replace straight-line walk metres with the pedestrian network, in place.
 
-    Returns the point pairs where the real walk is far longer than the straight
-    line, so the caller can ban them and search again.
+    Returns ``{pairs, origins, dests}`` of bad walks (real ≫ straight), so the
+    caller can ban mid-journey pairs and/or origin/destination stops and search
+    again. Uses the process-level ``_walk_cache`` so identical rounded coord
+    pairs are not re-fetched.
     """
-    bad: set = set()
+    pairs: set = set()
+    origins: set = set()
+    dests: set = set()
     for leg in legs:
         if leg["type"] != "walk":
             continue
         if leg["metres"] == 0:
             leg["minutes"] = 0.0
             continue
-        if not budget.take():
-            leg["estimated"] = True
-            continue
         straight = leg["metres"]
-        try:
-            result = pedroute.walk_route(
-                leg["from"]["latitude"],
-                leg["from"]["longitude"],
-                leg["to"]["latitude"],
-                leg["to"]["longitude"],
-            )
-        except Exception:  # a failed walk must not lose the journey
-            leg["estimated"] = True
-            continue
-        sources.append(result)
-        data = result["data"] or {}
-        if data.get("found"):
-            leg["straight_line_metres"] = straight
-            leg["metres"] = round(data["metres"])
-            leg["minutes"] = round(data["minutes"], 1)
-            if (
-                data["metres"] > straight * _BAD_WALK_RATIO
-                and leg.get("from_point")
-                and leg.get("to_point")
-            ):
-                bad.add(frozenset((leg["from_point"], leg["to_point"])))
+        from_lat = leg["from"]["latitude"]
+        from_lon = leg["from"]["longitude"]
+        to_lat = leg["to"]["latitude"]
+        to_lon = leg["to"]["longitude"]
+        cache_key = _walk_cache_key(from_lat, from_lon, to_lat, to_lon)
+        if cache_key in _walk_cache:
+            data = _walk_cache[cache_key]
+            if data is None:
+                leg["estimated"] = True
+                continue
         else:
-            leg["estimated"] = True
-    return bad
+            if not budget.take():
+                leg["estimated"] = True
+                continue
+            try:
+                result = pedroute.walk_route(from_lat, from_lon, to_lat, to_lon)
+            except Exception:  # a failed walk must not lose the journey
+                _walk_cache[cache_key] = None
+                leg["estimated"] = True
+                continue
+            sources.append(result)
+            payload = result["data"] or {}
+            if payload.get("found"):
+                data = {
+                    "metres": payload["metres"],
+                    "minutes": payload["minutes"],
+                }
+                _walk_cache[cache_key] = data
+            else:
+                _walk_cache[cache_key] = None
+                leg["estimated"] = True
+                continue
+        leg["straight_line_metres"] = straight
+        leg["metres"] = round(data["metres"])
+        leg["minutes"] = round(data["minutes"], 1)
+        if data["metres"] > straight * _BAD_WALK_RATIO:
+            from_point = leg.get("from_point")
+            to_point = leg.get("to_point")
+            if from_point and to_point:
+                pairs.add(frozenset((from_point, to_point)))
+            elif from_point is None and to_point:
+                origins.add(to_point)
+            elif to_point is None and from_point:
+                dests.add(from_point)
+    return {"pairs": pairs, "origins": origins, "dests": dests}
 
 
 def _search(graph, starts, end_weights, options: int, banned: set, origin_point, destination_point) -> list[dict]:
@@ -675,7 +777,8 @@ def _search(graph, starts, end_weights, options: int, banned: set, origin_point,
     hard_ban: set = set()
     keys_by_label: dict[tuple, set] = defaultdict(set)
     for (mode, key), label in graph["labels"].items():
-        keys_by_label[(mode, label["operator"], label["route"])].add(key)
+        # Penalty / hard_ban compare against board meta `(mode, key)`.
+        keys_by_label[(mode, label["operator"], label["route"])].add((mode, key))
     for _ in range(options * 2):
         found = _dijkstra(
             graph["adjacency"],
@@ -712,6 +815,7 @@ def _search(graph, starts, end_weights, options: int, banned: set, origin_point,
                 "overnight_hint": any(leg.get("overnight") for leg in rides),
                 "stops": sum(leg["stops"] for leg in rides),
                 "walk_metres": sum(leg["metres"] for leg in legs if leg["type"] == "walk"),
+                "search_cost": total,
                 "legs": legs,
             }
         )
@@ -736,9 +840,9 @@ def journey(
     用法：`journey("元州邨", "香港迪士尼樂園")`。
     市民會問：由我呢度去 X，搭咩車？要唔要轉車？行幾遠？
 
-    交還多個方案，每個帶步行段同乘車段。成本係（轉車、停站、步行），
-    唔係時間；乘車時間冇數據，只有步行時間來自行人路網。
-    山頂纜車、的士、高鐵未接入，跨出這個範圍的組合接唔上。
+    交還多個方案，每個帶步行段同乘車段。成本係政策分鐘（上車等候、
+    距離／車速、停站、步行），唔係 ETA 或實測時間；乘車時間冇公布數據，
+    只有步行時間來自行人路網。山頂纜車、的士、高鐵未接入，跨出這個範圍的組合接唔上。
 
     每一次 boarding 都至少坐一個站；純步行方案唔會出現。
     地名由地政總署地點搜尋解析，所以 `sources` 只列網絡同步行來源。
@@ -779,25 +883,53 @@ def journey(
     end_weights = {
         graph["point_index"][key]: round(gap * walk_unit) for gap, key in target_edges
     }
+    base_starts = starts
+    base_end_weights = end_weights
     banned: set = set()
+    banned_origins: set = set()
+    banned_dests: set = set()
     chosen: list[dict] = []
     walk_sources: list[dict] = []
+    walk_budget_calls = max(_WALK_CALLS, options * 4)
     for attempt in range(2):
-        chosen = _search(graph, starts, end_weights, options, banned, start_point, end_point)
-        if not chosen:
-            break
-        budget = _WalkBudget()
+        starts = [
+            (cost, node)
+            for cost, node in base_starts
+            if graph["point_key"].get(node) not in banned_origins
+        ]
+        end_weights = {
+            node: weight
+            for node, weight in base_end_weights.items()
+            if graph["point_key"].get(node) not in banned_dests
+        }
+        if not starts or not end_weights:
+            break  # keep previous chosen (same as empty search)
+        found = _search(
+            graph, starts, end_weights, options, banned, start_point, end_point
+        )
+        if not found:
+            break  # keep the first-pass options if a retry finds nothing
+        chosen = found
+        budget = _WalkBudget(calls=walk_budget_calls)
         walk_sources = []
-        bad: set = set()
+        bad_pairs: set = set()
+        bad_origins: set = set()
+        bad_dests: set = set()
         for option in chosen:
-            bad |= _price_walks(option["legs"], budget, walk_sources)
+            old_walk = option["walk_metres"]
+            priced = _price_walks(option["legs"], budget, walk_sources)
+            bad_pairs |= priced["pairs"]
+            bad_origins |= priced["origins"]
+            bad_dests |= priced["dests"]
             option["walk_metres"] = sum(
                 leg["metres"] for leg in option["legs"] if leg["type"] == "walk"
             )
-            option["score"] = _score(option, graph["units"])
-        if not bad or attempt == 1:
+            option["score"] = _score_after_walks(option, old_walk, graph["units"])
+        if not (bad_pairs or bad_origins or bad_dests) or attempt == 1:
             break
-        banned = bad
+        banned = bad_pairs
+        banned_origins = bad_origins
+        banned_dests = bad_dests
     sources.extend(walk_sources)
 
     if not chosen:

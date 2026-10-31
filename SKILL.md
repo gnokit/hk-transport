@@ -62,6 +62,31 @@ A few names are two stations: 香港 has an Airport Express id and a Tung Chung 
 - Or run the command again with the station id or code, which settles it.
 - Never add up, average, or subset the answer across those stations.
 
+## Border control points (HK-side edge cases)
+
+This skill covers **Hong Kong–side** public transport only. Do not plan rides on the Mainland network, cross-boundary coaches as a product, co-located Mainland halls, or high-speed rail through 西九龍. If the person asks to cross the boundary or ride 高鐵／跨境鐵路, say 「這個問題超出 hk-transport（港交寶）的範圍。」
+
+Place search and stop names often collide with Mainland port names (福田、羅湖、皇崗、蓮塘、深圳灣). When the origin or destination is clearly one of the ports below (or a close alias), **do not** trust the first `place_search` hit blindly. Prefer the **journey input name** in the table (official stop or station wording), and treat the listed WGS84 coordinates as the intended point. Say which port point you used.
+
+Coordinates are from Lands Department place search, MTR exit snapshot, or TD `JSON_BUS` stop geometry (retrieved 2026-10-31 HKT unless noted). Round-trip checks: lat/lon are Hong Kong side unless marked avoid.
+
+| User intent (aliases) | Prefer `journey` / stop input | lat | lon | Notes |
+| --- | --- | --- | --- | --- |
+| 羅湖、羅湖站、羅湖管制站、羅湖口岸（港方） | `羅湖` (MTR) or `港鐵羅湖站` | 22.527639 | 114.113235 | MTR only to the control point. Exit A ≈ 22.529048, 114.113419; ImmD hall place `羅湖出入境管制站` ≈ 22.529477, 114.113664. |
+| 落馬洲支線、落馬洲站、福田口岸（港方過關）、落馬洲站福田口岸 | `落馬洲站 ‧ 福田口岸` | 22.515513 | 114.066528 | KMB/TD stop id `12729` (B1 terminus). **Preferred** over bare `落馬洲站` (place ≈ 22.515034, 114.065624), which can enter via bus loops. MTR `落馬洲` / exit A ≈ 22.514899, 114.066198 (`mtr:78`). Spur-line CP reporting centre ≈ 22.514953, 114.065663. |
+| 落馬洲管制站、皇崗（道路口岸／港方）、往皇崗巴士 | `落馬洲管制站` | 22.509242 | 114.074162 | Road crossing to Huanggang — **not** the Spur Line MTR station. San Tin PTI `新田運輸交匯處` ≈ 22.503179, 114.081932. |
+| 皇崗口岸、皇崗 (bare Mainland-style) | Do **not** use TD stops `皇崗` / `皇崗口岸` | 22.522901 / 22.523199 | 114.067095 / 114.067601 | Those bus geometries sit on the **cross-boundary / Shenzhen-side** naming. Remap to `落馬洲管制站` or ask road vs Spur Line. |
+| 深圳灣、深圳灣口岸、深圳灣管制站 | `深圳灣口岸` (bus stop) | 22.501407 | 113.945805 | TD stop id `12728` (e.g. B3). ImmD `深圳灣出入境管制站` ≈ 22.493822, 113.945433. Closed area. |
+| 文錦渡、文錦渡管制站 | `文錦渡管制站` | 22.537416 | 114.128813 | Nearest KMB often `文錦渡(新屋嶺村)` ≈ 22.534554, 114.131760. |
+| 沙頭角、沙頭角管制站 | `沙頭角管制站` | 22.549083 | 114.223287 | ImmD: passenger/cargo clearance **suspended**. Bus `沙頭角總站` ≈ 22.545561, 114.223655. |
+| 香園圍、香園圍管制站、蓮塘（港方） | `香園圍管制站` or bus `香園圍口岸` | 22.552296 / 22.552023 | 114.153809 / 114.154115 | Mainland name is 蓮塘; keep HK wording for search. |
+| 港珠澳、港珠澳大橋、港珠澳大橋香港口岸 | `港珠澳大橋香港口岸` | 22.316145 | 113.950624 | TD stop `13345` (PTI). 旅檢大樓 / stop `13346` ≈ 22.317291, 113.950292. Place search pin ≈ 22.317343, 113.955271. |
+| 高鐵西九龍、西九龍站（過關／高鐵） | Out of scope for cross-boundary rail | — | — | Local buses to the building are OK (`西九龍站` ≈ 22.304021, 114.166529; place `香港西九龍站` ≈ 22.303298, 114.165180) but do not sell a 高鐵 journey. |
+| 中國客運碼頭 | `中國客運碼頭` | 22.299460 | 114.165840 | Ferry control point; sailings to Mainland ports are not a graph product beyond pier access. |
+| 港澳客輪碼頭 | `港澳客輪碼頭出入境管制站` | 22.288839 | 114.152303 | |
+
+When substituting, tell the user the canonical name and coordinates you used. If road vs Spur Line (落馬洲／皇崗／福田) is ambiguous, ask once before searching.
+
 ## Answer
 
 Answer the person in Traditional Chinese.
