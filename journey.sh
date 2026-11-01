@@ -46,6 +46,8 @@ class Arg:
     def label(self) -> str:
         name = self.metavar or self.dest
         if self.flag:
+            if self.kind is bool:
+                return self.flag
             return f"{self.flag} {name}"
         if self.nargs == "+":
             return f"{name}..."
@@ -93,6 +95,7 @@ def _commands() -> tuple[Command, ...]:
                 "Rail boards cheaper and rides faster than bus/minibus.",
                 "Walking metres and minutes come from the Lands Department pedestrian network; when a walk has no route there, it is marked estimated.",
                 "No riding time is published, so a total duration is never given. No fares are included.",
+                "With --explain each option also carries `policy`: the ranking weight split into rode, waited, transfer and walk minutes. Those are policy weights, not a journey time.",
                 "The Peak Tram, taxis and high-speed rail are not in the graph yet.",
             ),
             lambda ns: journey(
@@ -101,6 +104,7 @@ def _commands() -> tuple[Command, ...]:
                 options=ns.options,
                 walk=ns.walk,
                 at=ns.time,
+                explain=ns.explain,
             ),
             (
                 Arg("origin", "Origin place, stop name, station name, or id.", metavar="origin"),
@@ -127,6 +131,12 @@ def _commands() -> tuple[Command, ...]:
                     flag="--time",
                     metavar="time",
                     default=None,
+                ),
+                Arg(
+                    "explain",
+                    "Add each option's policy minutes split into rode, waited, transfer and walk. Ranking weights, not a published travel time.",
+                    flag="--explain",
+                    kind=bool,
                 ),
             ),
         ),
@@ -207,7 +217,11 @@ def _parser() -> argparse.ArgumentParser:
                     "required": arg.required,
                     "default": arg.default,
                 }
-                if arg.kind is not None:
+                if arg.kind is bool:
+                    kwargs["action"] = "store_true"
+                    kwargs["default"] = False
+                    kwargs["required"] = False
+                elif arg.kind is not None:
                     kwargs["type"] = arg.kind
                 item.add_argument(arg.flag, **kwargs)
             else:

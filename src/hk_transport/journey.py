@@ -975,6 +975,50 @@ def _price_walks(legs: list[dict], budget: _WalkBudget, sources: list[dict]) -> 
     return {"pairs": pairs, "origins": origins, "dests": dests}
 
 
+def _edge_weight(adjacency: list[list[tuple]], source: int, target: int, kind: str) -> int:
+    """The stored weight of one adjacency edge, for the explain split."""
+    for node, weight, edge_kind, _meta in adjacency[source]:
+        if node == target and edge_kind == kind:
+            return weight
+    return 0
+
+
+def _cost_parts(path, starts, end_weights, graph, board_costs) -> dict:
+    """Split a chosen path into ride, wait, transfer and walk weights.
+
+    The pieces are the same integers Dijkstra summed, so they add up to the
+    search cost. They are **policy minutes**, not published travel times: a
+    boarding carries `wait_perception` and a fixed transfer penalty, and a ride
+    is distance over a policy speed. Only `--explain` shows them.
+    """
+    adjacency = graph["adjacency"]
+    units = graph["units"]
+    start_by_node = {node: cost for cost, node in starts}
+    parts = {"ride": 0, "wait": 0, "transfer": 0, "walk": 0}
+    for before, node, kind, meta in path:
+        if kind == "start":
+            parts["walk"] += start_by_node.get(node, 0)
+        elif kind == "end":
+            parts["walk"] += end_weights.get(before, 0)
+        elif kind == "walk":
+            parts["walk"] += _edge_weight(adjacency, before, node, kind)
+        elif kind == "board":
+            # A board edge carries the first hop's ride cost as its weight;
+            # the wait and the transfer penalty are added on top by Dijkstra.
+            parts["ride"] += _edge_weight(adjacency, before, node, kind)
+            board = (board_costs or {}).get(meta)
+            if board is None:
+                board = units["board"].get(meta[0], units["board"]["bus"])
+            parts["wait"] += board
+            parts["transfer"] += units["transfer_penalty"]
+        elif kind == "ride":
+            parts["ride"] += _edge_weight(adjacency, before, node, kind)
+        elif kind == "alight":
+            # Alighting carries the arrival dwell, so it belongs to the ride.
+            parts["ride"] += _edge_weight(adjacency, before, node, kind)
+    return parts
+
+
 def _search(
     graph,
     starts,
@@ -1057,6 +1101,7 @@ def _search(
                 "stops": sum(leg["stops"] for leg in rides),
                 "walk_metres": sum(leg["metres"] for leg in legs if leg["type"] == "walk"),
                 "search_cost": search_cost,
+                "cost_parts": _cost_parts(path, starts, end_weights, graph, board_costs),
                 "legs": legs,
             }
         )
@@ -1065,12 +1110,43 @@ def _search(
     return chosen
 
 
+def _policy_block(option: dict, parts: dict) -> dict:
+    """The explain split, in minutes, for one option.
+
+    `policy_minutes` is the ranking weight in readable units and always equals
+    `score / units_per_minute`. It is not a published journey time and must not
+    be reported as one: the wait is `wait_perception` times the expected wait,
+    every boarding carries a fixed penalty, and a ride is distance over a
+    policy speed.
+
+    `walked_minutes` is the pedestrian network's own time. The ranking charges
+    walking at `walk_minutes_per_km`, so on a long walk the two disagree; the
+    difference is the network being slower than the flat policy, not an error.
+    """
+    scale = COST["units_per_minute"]
+    walked = sum(
+        (leg.get("minutes") or 0.0) for leg in option["legs"] if leg["type"] == "walk"
+    )
+    return {
+        "ridden_minutes": round(parts["ride"] / scale, 1),
+        "waited_minutes": round(parts["wait"] / scale, 1),
+        "transfer_minutes": round(parts["transfer"] / scale, 1),
+        "walked_minutes": round(walked, 1),
+        "policy_minutes": round(option["score"] / scale, 1),
+        "note": (
+            "政策權重，唔係公布的行車時間；"
+            "步行分鐘用行人路網，排序權重用 15 分鐘/公里，長距離會有差。"
+        ),
+    }
+
+
 def journey(
     origin: str,
     destination: str,
     options: int = 3,
     walk: int = _WALK,
     at: str | None = None,
+    explain: bool = False,
 ) -> dict:
     """由一個地方去另一個地方，用晒所有已接入的交通網絡。
 
@@ -1210,9 +1286,9 @@ def journey(
             )
             widened += fallback_note or ""
     if not origin_edges:
-        return compose(sources, None, note=f"起點 {wide} 米內沒有已接入的站。")
+        return compose(sources, None, note=district_notes + f"起點 {wide} 米內沒有已接入的站。")
     if not target_edges:
-        return compose(sources, None, note=f"終點 {wide} 米內沒有已接入的站。")
+        return compose(sources, None, note=district_notes + f"終點 {wide} 米內沒有已接入的站。")
 
     walk_unit = graph["units"]["walk"]
     starts = [
@@ -1275,6 +1351,9 @@ def journey(
             # search_cost is an internal Dijkstra weight, not a time. Do not
             # expose it next to score, where a reader could mistake it for one.
             option.pop("search_cost", None)
+            parts = option.pop("cost_parts", None)
+            if explain and parts is not None:
+                option["policy"] = _policy_block(option, parts)
         if not (bad_pairs or bad_origins or bad_dests) or attempt == 1:
             break
         banned = bad_pairs

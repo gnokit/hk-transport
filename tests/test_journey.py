@@ -648,6 +648,59 @@ def test_a_night_route_is_tagged(wired, monkeypatch):
     assert "通宵" in result["note"]
 
 
+def test_explain_splits_the_score_into_minutes(wired):
+    option = j.journey("巴士一站", "巴士三站", explain=True)["data"]["options"][0]
+    policy = option["policy"]
+    assert policy["policy_minutes"] == pytest.approx(option["score"] / 1000, abs=0.06)
+    assert set(policy) >= {
+        "ridden_minutes",
+        "waited_minutes",
+        "transfer_minutes",
+        "walked_minutes",
+        "policy_minutes",
+        "note",
+    }
+    assert "唔係公布的行車時間" in policy["note"]
+
+
+def test_the_default_answer_has_no_policy_split(wired):
+    option = j.journey("巴士一站", "巴士三站")["data"]["options"][0]
+    assert "policy" not in option
+    assert "cost_parts" not in option
+
+
+def test_a_coordinate_pair_plans_like_the_stop_it_sits_on(wired):
+    result = j.journey("22.0000,114.0000", "22.0300,114.0300")
+    assert result["data"] is not None
+    assert result["data"]["origin"]["resolved_as"] == "coordinates"
+    rides = [leg for leg in result["data"]["options"][0]["legs"] if leg["type"] == "ride"]
+    assert rides[0]["board"] == "巴士一站"
+
+
+def test_a_district_name_says_it_is_one_point(wired, monkeypatch):
+    point = {
+        "query": "屯門",
+        "resolved_as": "place",
+        "name_zh": "屯門",
+        "name_en": None,
+        "latitude": 22.395,
+        "longitude": 113.973,
+    }
+    near = {
+        "query": "巴士二站",
+        "resolved_as": "stop",
+        "name_zh": "巴士二站",
+        "name_en": "巴士二站",
+        "latitude": 22.01,
+        "longitude": 114.01,
+    }
+    monkeypatch.setattr(
+        j._places, "place", lambda text, points: (point if text == "屯門" else near, None)
+    )
+    result = j.journey("屯門", "巴士二站")
+    assert "地區名" in result["note"]
+
+
 def test_a_day_route_ranks_before_a_night_route(wired, monkeypatch):
     """The night route is cheaper on paper; the day route still comes first."""
     rows = [
