@@ -81,14 +81,15 @@ def _commands() -> tuple[Command, ...]:
                 "One search over MTR, every franchised bus, green minibus, tram and ferry.",
                 "Each option lists its walk legs and its ride legs, in order.",
                 "Ranking uses policy minutes: board wait + ride time + walking.",
-                f"Board wait: MTR {COST['board_minutes']['mtr']:g}, light rail {COST['board_minutes']['lightrail']:g}, "
-                f"tram {COST['board_minutes']['tram']:g}, bus {COST['board_minutes']['bus']:g}, "
-                f"minibus {COST['board_minutes']['minibus']:g}, ferry {COST['board_minutes']['ferry']:g} minutes.",
+                f"MTR headway policy: AEL {COST['mtr_headway_minutes']['AEL']:g}, "
+                f"EAL {COST['mtr_headway_minutes']['EAL']:g}, TML {COST['mtr_headway_minutes']['TML']:g}, "
+                f"TCL {COST['mtr_headway_minutes']['TCL']:g}, urban 3-5 minutes.",
+                "Board wait: bus/minibus/tram/ferry use GTFS when available; otherwise light rail/tram 5, bus/minibus 8, ferry 20 minutes.",
                 f"MTR line speeds: AEL {COST['line_speed_kmh']['AEL']:g}, EAL {COST['line_speed_kmh']['EAL']:g}, "
                 f"TML {COST['line_speed_kmh']['TML']:g}, TCL {COST['line_speed_kmh']['TCL']:g}, "
                 f"urban {COST['line_speed_kmh']['ISL']:g} km/h. "
                 "Bus/minibus use the published whole-route time pro rata.",
-                "Headways and service hours come from the TD GTFS feed; routes outside the query time are removed. MTR heavy rail uses policy waits.",
+                "Service hours: TD GTFS for bus/minibus/tram/ferry; MTR first/last from the MTR website snapshot. Routes outside the query time are removed.",
                 "Rail boards cheaper and rides faster than bus/minibus.",
                 "Walking metres and minutes come from the Lands Department pedestrian network; when a walk has no route there, it is marked estimated.",
                 "No riding time is published, so a total duration is never given. No fares are included.",

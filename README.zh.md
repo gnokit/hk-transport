@@ -189,9 +189,9 @@ graph LR
 
 ## 資料來源與授權
 
-數據來自 [DATA.GOV.HK](https://data.gov.hk)：港鐵 4 個數據集，專營巴士同綠色專線小巴的路線、車費同實時到站，加地政總署的地址查詢、地點搜尋同坐標轉換，以及運輸署的特別交通消息同特別交通及運輸安排。使用時受其[條款](https://data.gov.hk/tc/terms-and-conditions)約束。
+數據來自 [DATA.GOV.HK](https://data.gov.hk)：港鐵 4 個數據集、運輸署的 GTFS 班次資料同交通消息，加地政總署的地址查詢、地點搜尋同坐標轉換。港鐵官網的公開服務時間頁會讀一次，用來建立首末班車快照。使用時受 [data.gov.hk 條款](https://data.gov.hk/tc/terms-and-conditions)同港鐵官網條款約束。
 
-這個專案的程式以 [MIT 授權](LICENSE) 發布。這個授權只涵蓋程式：`src/hk_transport/data/mtr_exits.json` 是由地政總署數據衍生的快照，仍然受 data.gov.hk 條款約束——見 [NOTICE](NOTICE)。
+這個專案的程式以 [MIT 授權](LICENSE) 發布。這個授權只涵蓋程式：`src/hk_transport/data/mtr_exits.json` 同 `src/hk_transport/data/mtr_service_hours.json` 是由第三方數據衍生的快照，仍然受各自的來源條款約束——見 [NOTICE](NOTICE)。
 
 ## 開發
 

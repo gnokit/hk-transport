@@ -65,7 +65,8 @@ uv run pytest -m live -o addopts=
 
 - **一個 `journey` 答所有點對點問題。** 舊的 `mtr_journey`、`bus_journey`、`minibus_journey` 已由入口移除（函式仍在庫內，俾單一模式的測試用）。
 - **排序係加權，唔係時間。** 政策表在 `journey.py` 頂部的 `COST`：上車罰分、車速同停站按模式分開；港鐵再按線路速度（機場快線 80、東鐵 55、屯馬 50、東涌 60、市區 40 km/h），巴士／小巴用運輸署公布的全線時間按距離比例分配（不再加停站），步行 15 分鐘一公里。呢啲係估算假設，唔係 ETA；答案要講明，而且改表就改排序。
-- **班次同服務時間用 GTFS。** `headway_core` 由運輸署 `hk-td-tis_11` 讀 `frequencies`／`trips`／`calendar`；有班次就用 `wait_perception × min(H/2, wait_cap)`，服務時間外的路線唔入圖。MTR 重鐵、同有路線但冇 `frequencies` 的路線，服務時間未知，會保留並用政策等候。
+- **班次同服務時間：巴士／小巴／電車／渡輪用 GTFS；港鐵首末班車用官網快照，班次頻率用政策表。** `headway_core` 由運輸署 `hk-td-tis_11` 讀 `frequencies`／`trips`／`calendar`；有班次就用 `wait_perception × min(H/2, wait_cap)`，服務時間外的路線唔入圖。`mtr_service_core` 讀 `data/mtr_service_hours.json`（MTR 官網 service-hours 頁，非 data.gov.hk）；有首末班車就用嚟封閉服務時間外的站。MTR 冇公開班次頻率，所以用 `COST["mtr_headway_minutes"]` 政策估算。有路線但冇 `frequencies` 的服務時間未知，會保留。
+- **MTR 短途班次唔在圖。** `mtr_core` 的 trip 只有 full direction（例如金鐘→羅湖），官網首末班車卻有短途目的地（例如金鐘→上水）。所以 per-destination 首末班車可能保守地封閉整個方向，即使短途班次仍開。要準確就要把短途班次加入圖，或改用 line-level 窗口並在 note 講明「尾班車可能只往部分目的地」。
 - **步行用真路網。** `pedroute.walk_route` 用地政總署 3D 行人路網，交還真距離同時間。路網冇覆蓋（例如南生圍）會 `found: false`，該段標 `estimated: true` 並保留直線距離——唔可以當成真步行路線。
 - **唔可以答總時間。** 乘車時間冇數據，只有步行分鐘。加起來講「全程幾耐」就係編造。
 - **純步行方案唔會出現。** 搜尋要求至少一段乘車；如果最便宜其實係行路，答案會講接不上，唔會叫你行。

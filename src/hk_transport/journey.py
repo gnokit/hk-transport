@@ -42,6 +42,7 @@ from hk_transport import (
     headway_core,
     minibus_core,
     mtr_core,
+    mtr_service_core,
     pedroute,
     tram_core,
 )
@@ -124,6 +125,21 @@ COST = {
         "TKL": 40.0,
         "SIL": 40.0,
         "DRL": 40.0,
+    },
+    # MTR does not publish headways as open data. These are policy estimates
+    # used for E[W]; first and last departures come from the MTR website
+    # snapshot. Change them when a measured source exists.
+    "mtr_headway_minutes": {
+        "AEL": 10.0,
+        "EAL": 4.0,
+        "TML": 4.0,
+        "TCL": 5.0,
+        "ISL": 3.0,
+        "TWL": 3.0,
+        "KTL": 3.0,
+        "TKL": 5.0,
+        "SIL": 5.0,
+        "DRL": 10.0,
     },
     # seconds-scale stop at each station/pier, converted to policy minutes.
     "dwell_minutes": {
@@ -258,10 +274,16 @@ def _note_from_cost() -> str:
     wait_perception = COST["wait_perception"]
     wait_cap = COST["wait_cap_minutes"]
     transfer = COST["transfer_penalty_minutes"]
+    mtr_headway = COST["mtr_headway_minutes"]
+    urban_headways = [mtr_headway[key] for key in ("ISL", "TWL", "KTL", "TKL", "SIL")]
     return (
-        "排序用政策權重，唔係時間：上車等候有 GTFS 班次時用 "
-        f"{wait_perception:g} × min(班距/2, {wait_cap:g}) 分鐘，"
-        f"冇資料時用港鐵 {board['mtr']:g}、輕鐵／電車 {board['lightrail']:g}、"
+        "排序用政策權重，唔係時間：上車等候用 "
+        f"{wait_perception:g} × min(班距/2, {wait_cap:g}) 分鐘；"
+        f"港鐵班距用政策表（AEL {mtr_headway['AEL']:g}、東鐵 {mtr_headway['EAL']:g}、"
+        f"屯馬 {mtr_headway['TML']:g}、東涌 {mtr_headway['TCL']:g}、"
+        f"市區 {min(urban_headways):g}–{max(urban_headways):g} 分鐘），"
+        "其他路線有 GTFS 班次就用 GTFS，"
+        f"冇資料時用輕鐵／電車 {board['lightrail']:g}、"
         f"巴士 {board['bus']:g}、小巴 {board['minibus']:g}、渡輪 {board['ferry']:g} 分鐘；"
         f"每次上車另加 {transfer:g} 分鐘轉車罰分；"
         f"港鐵按線路速度（機場快線 {lines['AEL']:g}、東鐵 {lines['EAL']:g}、"
@@ -686,6 +708,7 @@ def _dijkstra(
     hard_ban: set | None = None,
     board_costs: dict[tuple, int] | None = None,
     closed: set | None = None,
+    closed_boards: set | None = None,
 ):
     """Shortest path that must ride, may not chain walks, and may end anywhere.
 
@@ -736,6 +759,12 @@ def _dijkstra(
             ):
                 continue
             if closed and kind == "board" and meta in closed:
+                continue
+            if (
+                closed_boards
+                and kind == "board"
+                and (meta[0], meta[1], point_key.get(node)) in closed_boards
+            ):
                 continue
             step = weight
             if kind == "board":
@@ -952,6 +981,7 @@ def _search(
     destination_point,
     board_costs: dict[tuple, int] | None = None,
     closed: set | None = None,
+    closed_boards: set | None = None,
 ) -> list[dict]:
     chosen: list[dict] = []
     seen: set[tuple] = set()
@@ -975,6 +1005,7 @@ def _search(
             hard_ban,
             board_costs,
             closed,
+            closed_boards,
         )
         if found is None:
             break
@@ -1070,7 +1101,17 @@ def journey(
     at_time = _parse_at(at)
     board_costs: dict[tuple, int] = {}
     closed: set[tuple] = set()
+    closed_boards: set[tuple] = set()
     headway_note = ""
+    mtr_note = ""
+    for mode, key in graph["labels"]:
+        if mode != "mtr":
+            continue
+        wait = _wait_cost(
+            graph["units"], COST["mtr_headway_minutes"].get(key[0])
+        )
+        if wait is not None:
+            board_costs[(mode, key)] = wait
     try:
         headway = headway_core.service_at(at_time)
         service = headway.get("data") or {}
@@ -1088,13 +1129,33 @@ def journey(
             wait = _wait_cost(graph["units"], info.get("headway_minutes"))
             if wait is not None:
                 board_costs[(mode, key)] = wait
-        headway_note = (
-            "班次同服務時間按查詢時間的 GTFS 資料；"
-            "港鐵重鐵冇服務時間數據，深夜的港鐵方案未必有車；"
-            "其他冇班次資料的路線亦用政策值。"
-        )
+        headway_note = "有 GTFS 班次資料的路線用 GTFS；其他路線用政策值。"
     except Exception:  # a failed feed must not lose the journey
-        headway_note = "班次資料不可用，等候同服務時間用政策值。"
+        headway_note = "GTFS 班次資料不可用，等候同服務時間用政策值。"
+
+    try:
+        mtr = mtr_service_core.service_at(at_time)
+        mtr_data = mtr.get("data") or {}
+        sources.append(mtr)
+        destinations = mtr_service_core.trip_destinations()
+        for mode, key in graph["labels"]:
+            if mode != "mtr":
+                continue
+            line, direction = key
+            dest = destinations.get((line, direction))
+            for station_id, station in mtr_data.items():
+                line_info = (station.get("lines") or {}).get(line)
+                if not line_info:
+                    continue
+                row = (line_info.get("destinations") or {}).get(dest) or line_info
+                if row.get("in_service") is False:
+                    closed_boards.add((mode, key, f"mtr:{station_id}"))
+        mtr_note = (
+            "港鐵首末班車用 MTR 官網快照，服務時間外的站唔入圖；"
+            "班次頻率係政策估算（MTR 冇公開班次數據）。"
+        )
+    except Exception:
+        mtr_note = "MTR 服務時間快照不可用，港鐵班次同服務時間用政策值。"
 
     wide = max(walk, _WALK_RETRY)
     origin_edges = _nearby(points, start_point["latitude"], start_point["longitude"], walk)
@@ -1151,6 +1212,7 @@ def journey(
             end_point,
             board_costs,
             closed,
+            closed_boards,
         )
         if not found:
             break  # keep the first-pass options if a retry finds nothing
@@ -1184,7 +1246,10 @@ def journey(
         return compose(
             sources,
             None,
-            note=NOTE + "這兩個地方在已接入的網絡上接不上。" + headway_note,
+            note=NOTE
+            + "這兩個地方在已接入的網絡上接不上。"
+            + headway_note
+            + mtr_note,
         )
 
     kept = [option for option in chosen if option["walk_metres"] <= _WALK_CAP]
@@ -1212,5 +1277,5 @@ def journey(
             "at": at_time.isoformat(),
             "options": shown,
         },
-        note=NOTE + widened + extra + headway_note,
+        note=NOTE + widened + extra + headway_note + mtr_note,
     )

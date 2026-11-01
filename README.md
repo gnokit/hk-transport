@@ -191,9 +191,9 @@ Scope is specified in [docs/TASKS.md](docs/TASKS.md); agent-facing instructions 
 
 ## Data sources & licence
 
-Data comes from [DATA.GOV.HK](https://data.gov.hk): four MTR datasets, plus the Lands Department address lookup, location search and coordinate transform, and the Transport Department's traffic news and advance arrangements. Use is subject to the [data.gov.hk terms](https://data.gov.hk/tc/terms-and-conditions).
+Data comes from [DATA.GOV.HK](https://data.gov.hk): four MTR datasets, the Transport Department's GTFS headway feed and traffic feeds, plus the Lands Department address lookup, location search and coordinate transform. The MTR website's public service-hours pages are read once to build the first/last-train snapshot. Use is subject to the [data.gov.hk terms](https://data.gov.hk/tc/terms-and-conditions) and the MTR website terms.
 
-This project's own code is [MIT licensed](LICENSE). That licence covers the code only: the bundled exit snapshot in `src/hk_transport/data/mtr_exits.json` is derived from Lands Department data and stays subject to the data.gov.hk terms — see [NOTICE](NOTICE).
+This project's own code is [MIT licensed](LICENSE). That licence covers the code only: the bundled exit snapshot in `src/hk_transport/data/mtr_exits.json` and the MTR service-hours snapshot in `src/hk_transport/data/mtr_service_hours.json` are derived from third-party data and remain subject to their source terms — see [NOTICE](NOTICE).
 
 ## Development
 

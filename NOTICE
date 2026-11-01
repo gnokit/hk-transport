@@ -10,8 +10,13 @@ Bundled data
 Department "Location Search" API and "Coordinates Transformation" API,
 published on data.gov.hk.
 
-Fares, routes, station and facility tables, and the live MTR feeds are read
-from data.gov.hk at run time. They are not redistributed in this repository.
+`src/hk_transport/data/mtr_service_hours.json` is a snapshot derived from the
+MTR Corporation's public service-hours pages on mtr.com.hk. It is not a
+data.gov.hk dataset and remains subject to the MTR website terms.
+
+Fares, routes, station and facility tables, the TD GTFS headway feed, and the
+live MTR feeds are read from data.gov.hk or the operator's endpoint at run
+time. They are not redistributed in this repository.
 
 Use of that data is subject to the data.gov.hk terms and conditions:
 https://data.gov.hk/tc/terms-and-conditions

@@ -135,6 +135,8 @@ def wired(monkeypatch):
         },
     )
     monkeypatch.setattr(j.headway_core, "service_at", lambda at: envelope({}))
+    monkeypatch.setattr(j.mtr_service_core, "service_at", lambda at: envelope({}))
+    monkeypatch.setattr(j.mtr_service_core, "trip_destinations", lambda: {})
     j.clear_cache()
     yield
     j.clear_cache()
@@ -522,6 +524,40 @@ def test_service_data_closes_a_route(wired, monkeypatch):
     result = j.journey("巴士一站", "巴士三站")
     assert result["data"] is None
     assert "接不上" in result["note"]
+
+
+def test_mtr_service_data_closes_a_station_board(wired, monkeypatch):
+    closed = {
+        "1": {
+            "lines": {
+                "TWL": {
+                    "first": "06:00",
+                    "last": "23:00",
+                    "in_service": False,
+                    "destinations": {
+                        "2": {
+                            "first": "06:00",
+                            "last": "23:00",
+                            "in_service": False,
+                        }
+                    },
+                }
+            }
+        },
+        "2": {"lines": {}},
+    }
+    monkeypatch.setattr(
+        j.mtr_service_core, "service_at", lambda at: envelope(closed)
+    )
+    monkeypatch.setattr(
+        j.mtr_service_core,
+        "trip_destinations",
+        lambda: {("TWL", "DT"): "2"},
+    )
+    j.clear_cache()
+    result = j.journey("一站", "二站", at="03:00")
+    assert result["data"] is None
+    assert "MTR" in result["note"]
 
 
 def test_at_is_in_the_answer(wired):
