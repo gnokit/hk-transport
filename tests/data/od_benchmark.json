@@ -1,0 +1,409 @@
+{
+ "what": "Origin-destination benchmark taken from Google Maps transit directions.",
+ "how": "Both ends are the exact WGS84 pair fed to journey, so no geocoding differs. District names are not used.",
+ "when": "2026-11-01, 14:05 and 17:35 HKT",
+ "caveat": "Google's duration is the fastest card at that moment and includes real-time service. It is a reference, not ground truth.",
+ "count": 40,
+ "pairs": [
+  {
+   "id": "A1",
+   "role": "train",
+   "cls": "A",
+   "name": "中環 → 銅鑼灣",
+   "from": "22.281749,114.158832",
+   "to": "22.280152,114.183924",
+   "google_minutes": 10,
+   "google_best": "港島綫"
+  },
+  {
+   "id": "A2",
+   "role": "train",
+   "cls": "A",
+   "name": "深水埗 → 觀塘",
+   "from": "22.330719,114.162332",
+   "to": "22.312060,114.226534",
+   "google_minutes": 31,
+   "google_best": "荃灣綫 + 觀塘綫"
+  },
+  {
+   "id": "A3",
+   "role": "train",
+   "cls": "A",
+   "name": "旺角 → 尖沙咀",
+   "from": "22.319562,114.169326",
+   "to": "22.297586,114.172302",
+   "google_minutes": 6,
+   "google_best": "荃灣綫"
+  },
+  {
+   "id": "B1",
+   "role": "train",
+   "cls": "B",
+   "name": "屯門 → 柴灣",
+   "from": "22.395084,113.973313",
+   "to": "22.264439,114.236985",
+   "google_minutes": 88,
+   "google_best": "屯馬綫 + 東涌綫 + 港島綫"
+  },
+  {
+   "id": "B2",
+   "role": "train",
+   "cls": "B",
+   "name": "東涌 → 寶琳",
+   "from": "22.289250,113.941379",
+   "to": "22.322357,114.257934",
+   "google_minutes": 78,
+   "google_best": "東涌綫 + 港島綫 + 將軍澳綫"
+  },
+  {
+   "id": "B3",
+   "role": "train",
+   "cls": "B",
+   "name": "上水 → 紅磡",
+   "from": "22.501368,114.127845",
+   "to": "22.302606,114.181723",
+   "google_minutes": 34,
+   "google_best": "東鐵綫"
+  },
+  {
+   "id": "B4",
+   "role": "train",
+   "cls": "B",
+   "name": "馬鞍山 → 堅尼地城",
+   "from": "22.424979,114.231492",
+   "to": "22.281365,114.128636",
+   "google_minutes": 63,
+   "google_best": "屯馬綫 + 東鐵綫 + 港島綫"
+  },
+  {
+   "id": "C1",
+   "role": "train",
+   "cls": "C",
+   "name": "美孚 → 太古",
+   "from": "22.338162,114.138343",
+   "to": "22.285195,114.216334",
+   "google_minutes": 42,
+   "google_best": "荃灣綫 + 港島綫"
+  },
+  {
+   "id": "C2",
+   "role": "train",
+   "cls": "C",
+   "name": "將軍澳 → 中環",
+   "from": "22.307404,114.259931",
+   "to": "22.281749,114.158832",
+   "google_minutes": 34,
+   "google_best": "將軍澳綫 + 港島綫"
+  },
+  {
+   "id": "C3",
+   "role": "train",
+   "cls": "C",
+   "name": "何文田 → 灣仔",
+   "from": "22.310089,114.182933",
+   "to": "22.277368,114.173007",
+   "google_minutes": 25,
+   "google_best": "屯馬綫 + 東鐵綫"
+  },
+  {
+   "id": "D1",
+   "role": "train",
+   "cls": "D",
+   "name": "南生圍 → 中環",
+   "from": "22.463313,114.036994",
+   "to": "22.281749,114.158832",
+   "google_minutes": 102,
+   "google_best": "屯馬綫 + 荃灣綫"
+  },
+  {
+   "id": "D2",
+   "role": "train",
+   "cls": "D",
+   "name": "赤柱廣場 → 荃灣",
+   "from": "22.219960,114.209483",
+   "to": "22.373616,114.117491",
+   "google_minutes": 72,
+   "google_best": "6X/6 + 荃灣綫"
+  },
+  {
+   "id": "E1",
+   "role": "train",
+   "cls": "E",
+   "name": "觀塘 → 荃灣",
+   "from": "22.312060,114.226534",
+   "to": "22.373616,114.117491",
+   "google_minutes": 44,
+   "google_best": "觀塘綫 + 荃灣綫"
+  },
+  {
+   "id": "E2",
+   "role": "train",
+   "cls": "E",
+   "name": "秀茂坪邨 → 旺角",
+   "from": "22.317033,114.233401",
+   "to": "22.319562,114.169326",
+   "google_minutes": 38,
+   "google_best": "13"
+  },
+  {
+   "id": "F1",
+   "role": "train",
+   "cls": "F",
+   "name": "上水 → 尖東",
+   "from": "22.501368,114.127845",
+   "to": "22.296418,114.173353",
+   "google_minutes": 44,
+   "google_best": "東鐵綫 + 屯馬綫"
+  },
+  {
+   "id": "F2",
+   "role": "train",
+   "cls": "F",
+   "name": "機場 → 荃灣",
+   "from": "22.315882,113.936488",
+   "to": "22.373616,114.117491",
+   "google_minutes": 38,
+   "google_best": "機場快綫 + 東涌綫 + 荃灣綫"
+  },
+  {
+   "id": "G1",
+   "role": "train",
+   "cls": "G",
+   "name": "西貢市中心 → 鑽石山",
+   "from": "22.380600,114.272900",
+   "to": "22.340109,114.201484",
+   "google_minutes": 55,
+   "google_best": "1A"
+  },
+  {
+   "id": "H1",
+   "role": "train",
+   "cls": "H",
+   "name": "中環碼頭 → 長洲",
+   "from": "22.286329,114.161387",
+   "to": "22.209123,114.029479",
+   "google_minutes": 45,
+   "google_best": "中環 - 長洲"
+  },
+  {
+   "id": "I1",
+   "role": "train",
+   "cls": "I",
+   "name": "上環 → 銅鑼灣",
+   "from": "22.286512,114.152834",
+   "to": "22.280152,114.183924",
+   "google_minutes": 12,
+   "google_best": "港島綫"
+  },
+  {
+   "id": "J1",
+   "role": "train",
+   "cls": "J",
+   "name": "機場 → 中環",
+   "from": "22.315882,113.936488",
+   "to": "22.281749,114.158832",
+   "google_minutes": 38,
+   "google_best": "機場快綫"
+  },
+  {
+   "id": "T-A1",
+   "role": "test",
+   "cls": "A",
+   "name": "灣仔 → 北角",
+   "from": "22.277368,114.173007",
+   "to": "22.291401,114.200471",
+   "google_minutes": 12,
+   "google_best": "港島綫"
+  },
+  {
+   "id": "T-A2",
+   "role": "test",
+   "cls": "A",
+   "name": "佐敦 → 太子",
+   "from": "22.304761,114.171696",
+   "to": "22.324494,114.168259",
+   "google_minutes": 8,
+   "google_best": "荃灣綫"
+  },
+  {
+   "id": "T-A3",
+   "role": "test",
+   "cls": "A",
+   "name": "油塘 → 牛頭角",
+   "from": "22.297855,114.237151",
+   "to": "22.315597,114.218955",
+   "google_minutes": 8,
+   "google_best": "觀塘綫"
+  },
+  {
+   "id": "T-B1",
+   "role": "test",
+   "cls": "B",
+   "name": "錦上路 → 大圍",
+   "from": "22.434838,114.063401",
+   "to": "22.372852,114.178324",
+   "google_minutes": 47,
+   "google_best": "屯馬綫"
+  },
+  {
+   "id": "T-B2",
+   "role": "test",
+   "cls": "B",
+   "name": "東涌 → 西灣河",
+   "from": "22.289250,113.941379",
+   "to": "22.282115,114.222315",
+   "google_minutes": 62,
+   "google_best": "東涌綫 + 港島綫"
+  },
+  {
+   "id": "T-B3",
+   "role": "test",
+   "cls": "B",
+   "name": "康城 → 香港",
+   "from": "22.295924,114.269211",
+   "to": "22.284426,114.158033",
+   "google_minutes": 47,
+   "google_best": "將軍澳綫 + 港島綫"
+  },
+  {
+   "id": "T-B4",
+   "role": "test",
+   "cls": "B",
+   "name": "屯門 → 旺角東",
+   "from": "22.395084,113.973313",
+   "to": "22.322157,114.172582",
+   "google_minutes": 55,
+   "google_best": "屯馬綫 + 東鐵綫"
+  },
+  {
+   "id": "T-C1",
+   "role": "test",
+   "cls": "C",
+   "name": "荃灣 → 北角",
+   "from": "22.373616,114.117491",
+   "to": "22.291401,114.200471",
+   "google_minutes": 44,
+   "google_best": "荃灣綫 + 港島綫"
+  },
+  {
+   "id": "T-C2",
+   "role": "test",
+   "cls": "C",
+   "name": "九龍灣 → 中環",
+   "from": "22.323574,114.214056",
+   "to": "22.281749,114.158832",
+   "google_minutes": 38,
+   "google_best": "觀塘綫 + 荃灣綫"
+  },
+  {
+   "id": "T-C3",
+   "role": "test",
+   "cls": "C",
+   "name": "沙田 → 銅鑼灣",
+   "from": "22.382615,114.187593",
+   "to": "22.280152,114.183924",
+   "google_minutes": 35,
+   "google_best": "東鐵綫 + 港島綫"
+  },
+  {
+   "id": "T-D1",
+   "role": "test",
+   "cls": "D",
+   "name": "大尾篤 → 旺角",
+   "from": "22.473504,114.236253",
+   "to": "22.319562,114.169326",
+   "google_minutes": 89,
+   "google_best": "20C + 東鐵綫 + 觀塘綫"
+  },
+  {
+   "id": "T-D2",
+   "role": "test",
+   "cls": "D",
+   "name": "石澳 → 中環",
+   "from": "22.230729,114.251020",
+   "to": "22.281749,114.158832",
+   "google_minutes": 40,
+   "google_best": "X9"
+  },
+  {
+   "id": "T-E1",
+   "role": "test",
+   "cls": "E",
+   "name": "土瓜灣 → 深水埗",
+   "from": "22.316833,114.187507",
+   "to": "22.330719,114.162332",
+   "google_minutes": 25,
+   "google_best": "屯馬綫 + 觀塘綫 + 荃灣綫"
+  },
+  {
+   "id": "T-E2",
+   "role": "test",
+   "cls": "E",
+   "name": "慈雲山 → 觀塘",
+   "from": "22.355836,114.204233",
+   "to": "22.312060,114.226534",
+   "google_minutes": 60,
+   "google_best": "觀塘綫"
+  },
+  {
+   "id": "T-F1",
+   "role": "test",
+   "cls": "F",
+   "name": "天水圍 → 銅鑼灣",
+   "from": "22.448346,114.004871",
+   "to": "22.280152,114.183924",
+   "google_minutes": 57,
+   "google_best": "屯馬綫 + 荃灣綫 + 港島綫"
+  },
+  {
+   "id": "T-F2",
+   "role": "test",
+   "cls": "F",
+   "name": "元朗 → 觀塘",
+   "from": "22.446067,114.035088",
+   "to": "22.312060,114.226534",
+   "google_minutes": 65,
+   "google_best": "屯馬綫 + 觀塘綫"
+  },
+  {
+   "id": "T-G1",
+   "role": "test",
+   "cls": "G",
+   "name": "寶琳 → 西貢",
+   "from": "22.322357,114.257934",
+   "to": "22.380600,114.272900",
+   "google_minutes": 50,
+   "google_best": "將軍澳綫 + 101M"
+  },
+  {
+   "id": "T-H1",
+   "role": "test",
+   "cls": "H",
+   "name": "北角碼頭 → 紅磡碼頭",
+   "from": "22.293824,114.199864",
+   "to": "22.300318,114.189335",
+   "google_minutes": 10,
+   "google_best": "步行 1.8 公里"
+  },
+  {
+   "id": "T-I1",
+   "role": "test",
+   "cls": "I",
+   "name": "堅尼地城 → 灣仔",
+   "from": "22.281365,114.128636",
+   "to": "22.277368,114.173007",
+   "google_minutes": 13,
+   "google_best": "港島綫"
+  },
+  {
+   "id": "T-J1",
+   "role": "test",
+   "cls": "J",
+   "name": "博覽館 → 尖沙咀",
+   "from": "22.321935,113.942239",
+   "to": "22.297586,114.172302",
+   "google_minutes": 57,
+   "google_best": "機場快綫 + 荃灣綫"
+  }
+ ]
+}

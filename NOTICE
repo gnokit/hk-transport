@@ -14,6 +14,12 @@ published on data.gov.hk.
 MTR Corporation's public service-hours pages on mtr.com.hk. It is not a
 data.gov.hk dataset and remains subject to the MTR website terms.
 
+`tests/data/od_benchmark.json` holds 40 transit durations taken from Google
+Maps as a regression fixture for the journey cost policy. It is a record of
+measurements, not a copy of a dataset, and is used only by
+`scripts/check_od_benchmark.py`. Google Maps content remains subject to
+Google's terms.
+
 Fares, routes, station and facility tables, the TD GTFS headway feed, and the
 live MTR feeds are read from data.gov.hk or the operator's endpoint at run
 time. They are not redistributed in this repository.

@@ -201,9 +201,10 @@ This project's own code is [MIT licensed](LICENSE). That licence covers the code
 uv run ruff check .                    # lint
 uv run pytest                          # offline tests
 uv run pytest -m live -o addopts=      # live checks against the real endpoints
+uv run python scripts/check_od_benchmark.py   # journey cost against the 40-pair OD benchmark
 ```
 
-CI runs `ruff check` and the offline suite. Live tests call data.gov.hk, so they are opt-in and never gate a build.
+CI runs `ruff check` and the offline suite. The OD benchmark is opt-in as well: it needs the MTR, bus, minibus, tram and ferry tables, and compares the planner's own minutes with Google Maps durations taken on 2026-11-01. Live tests call data.gov.hk, so they are opt-in and never gate a build.
 
 ## Status
 
