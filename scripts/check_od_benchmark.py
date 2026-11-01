@@ -23,8 +23,9 @@ variants), so a machine match would be a guess. The exit status depends on the
 
     median absolute error <= 8 minutes and |bias| <= 3 minutes, on both halves.
 
-Current reading at 2026-11-01: train median 4.3 / bias -0.2, test median 4.8 /
-bias +0.7, route agreement 14/20 and 15/20.
+Current reading at 2026-11-01 (train at 17:35, test at 17:35): train median
+4.3 / bias -1.26, test median 3.6 / bias +0.70, route agreement 14/20 and
+15/20.
 """
 
 from __future__ import annotations
