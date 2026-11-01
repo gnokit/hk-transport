@@ -57,7 +57,31 @@ NLB 的路線、站、車費已由運輸署檔案覆蓋（`journey` 用得到）
 
 **建議：** 查 NLB 的 OpenAPI spec；搵唔到就明寫 NLB 冇下一班（同現在一樣）。
 
+### B-37 特快巴士被 flat 車速低估
+
+`journey` 的 `COST["speed_kmh"]["bus"]` 一律 15 km/h。這對市區線合理，但對高速公路特快線（T270、A31、268B）太低。實測：T270 上水→尖東模型收 126.6 分鐘，TD 公布整條線（粉嶺→尖東）只有 67 分鐘；A31 機場→荃灣模型收 103 分鐘，TD 公布全程 78 分鐘。結果「落馬洲→太空館」的 T270 方案跌出 top 3，即使它與全港鐵方案時間相若。
+
+**建議：** 用 TD `journey_time_minutes`（每條線公布全程時間）同站距推算每條線的平均車速，或按站密度（站數／路線長度）分辨特快線。只用作 ranking，唔好把全程時間當分段時間輸出。改完要重跑「落馬洲→太空館」、「機場→荃灣」、「元州邨→長洲」的對照。
+
+### B-38 `journey` 方案多樣性仍然靠 heuristic
+
+修正重複方案封鎖整條線之後，預設 top 3 仍集中同一條走廊：例如「落馬洲→太空館」的三個方案都由東鐵線 LMC-DT 出發，之後轉屯馬線／觀塘線／92R。`penalty` 只加上車成本，唔會真正分散路線；`hard_ban` 只封最後一段落車站，仍然是 heuristic。
+
+**建議：** 考慮用 `networkx.shortest_simple_paths` 或 Yen's algorithm 在兩層圖上做 k-shortest，或用更強的路線多樣性約束（例如每個方案最多重用一條主幹線）。加測試確保 top N 不會被同一走廊壟斷。**注意：** 這項要同 B-37 的成本校準一齊做，否則只會改變偏差方向。
+
 ## P2 — 功能缺口同工程債
+
+### B-39 `_walk_cache` 無上限
+
+`journey._walk_cache` 是 process-level，key 是 rounded coords；同一個 long-lived process 跑很多 journey 會累積，冇 LRU／size cap。CLI 一個 command 一個 process，影響小；library 或 test 長時間跑會慢慢漲。
+
+**建議：** 加 size cap（例如 2,000 對）或 LRU；`clear_cache()` 已有，文件講明幾時清。
+
+### B-40 邊境口岸表 hard-code 座標，冇自動核對
+
+`SKILL.md` 的邊境表有 13 行，hard-code 座標、ImmD 狀態（沙頭角 suspended as of 2026-10-31）同首選輸入名。今次已修正皇崗口岸（stop `10000421`）同 `皇崗`（XB，`12743`）的混淆，但其餘行未經自動測試；TD 改名、新口岸啟用或 ImmD 狀態改變時，表會靜靜過時。
+
+**建議：** 把表搬到獨立 reference（或保留在 SKILL.md 但加 test），測試每個首選名可以在 `journey`／`place_search` 解析到，並在座標附近；營運狀態另加 `as of` 日期。新口岸啟用時要重跑。
 
 ### B-20 落馬洲站同落馬洲管制站係兩個地方
 
@@ -117,6 +141,12 @@ MTR Mobile 有非公開 API（`azumtrmba001v.azurewebsites.net/api/signage`）�
 | **B-28** | 活動特別線（269R、SP6） | **巴士部分已解決**：改用 TD 檔案後呢兩條線唔在內。小巴的 `specialType = 1` 係變體標記（黃昏班次等），唔可以當特別線剔走 |
 | **B-30** | 南生圍：Google Maps 的答案同方法 | 已記錄六個方案；第三階段綠巴數據有了可以再對照 |
 | **B-34** | OSM 步行路線可以補路網缺口 | 已比較五段（地政總署快 5–8 倍、距離較短；南生圍只有 OSM 有路線）。要用就要自架或付費，並遵守 ODbL |
+| **B-41** | `journey` 的 `note` 太長、太技術性 | 現在列齊每個模式的 board／speed／dwell；agent 會 quote 給市民。建議 note 只講原則，詳細數字放 `journey.sh help` 或 docs |
+| **B-42** | `_note_from_cost()` 用 `bus` 數值代表「巴士／小巴」 | 如果日後 bus/minibus 的 board 或 speed 分開，prose 會錯；建議分開印 |
+| **B-43** | `_merge_same_route()` 可能遮蓋真正的同線轉乘 | 現時合併「同 mode、同 route、同 operator、board_point == alight_point」的連續車程；同一路線號碼的分支／循環線可能被當成直通。建議抽樣 GMB／巴士分支線，必要時加 `route_seq` 或方向檢查 |
+| **B-44** | `journey.sh help` 叫讀者看 `COST in journey.py` | Agent 未必讀 source；建議 help 直接列出 policy 摘要，或指向 docs |
+| **B-45** | 真實網絡 regression 未覆蓋「落馬洲→太空館」 | 新 test 用 synthetic trunk 證明了 hard-ban 修正，但沒有覆蓋真實的全港鐵＋T270 案例。建議加小型 recorded fixture 或 live-marked test |
+| **B-46** | Fork PR 冇 GitHub checks | PR #1 的 fork 分支 `gh pr checks` 顯示 "no checks reported"，今次靠本地 full suite。建議在 repo settings 要求 checks，或文件講明 maintainer 要本地跑 `uv run pytest` + live |
 
 ---
 
@@ -132,5 +162,7 @@ MTR Mobile 有非公開 API（`azumtrmba001v.azurewebsites.net/api/signage`）�
 | **B-25** | 兩個來源只可以在路線號碼上對齊 | 規則寫入 `AGENTS.md`；尋路改用運輸署檔案，ETA 另用營辦商數據 | 2026-10-30 |
 | **B-29** | 冇步行轉乘邊 | 圖上加步行邊（300 米、港鐵 450 米，每點 20 個鄰居，優先連港鐵／渡輪／電車） | 2026-10-30 |
 | **B-33** | 第五階段冇開放數據 | 取消第五階段；跨境鐵路（羅湖／落馬洲）本來已在東鐵線數據內 | 2026-10-30 |
-| **B-35** | `journey` 建議通宵線 | 用 `^N\d` 標 `overnight_hint`，排在所有日間路線之後，note 講明「日間未必有車」。冇服務時間數據，所以只標記、不過濾 | 2026-10-30 |
+| **B-35** | `journey` 建議通宵線 | 用 `^N(?:[AB])?\d` 標 `overnight_hint`（N、NA、NB；NR 居民巴士除外），排在所有日間路線之後，note 講明「日間未必有車」。冇服務時間數據，所以只標記、不過濾 | 2026-10-30（2026-11-01 擴至 NA／NB） |
 | **B-36** | 跨境巴士令市內行程繞經皇崗 | `companyCode` XB（旺角—皇崗、油尖—皇崗）唔入圖；佢哋唯一共用的站係口岸，留低會出現「觀塘 → 荃灣 經皇崗」。有測試防止再加 | 2026-10-30 |
+| **B-47** | `journey` 重複方案封鎖整條線，令全港鐵／T270 消失 | 重複時只封最後一段落車站，唔再封 `(mode, key)` 整條線；連續同線、同接駁站的車程由 `_merge_same_route()` 合併；加 synthetic trunk regression test（舊 code 會 fail） | 2026-11-01 |
+| **B-48** | 皇崗口岸邊境表叫 agent 避開正確的港方口岸站 | 分開 `皇崗口岸`（TD stop `10000421`，新港方口岸，B10/B11/B12/B13/B14/B15/NB73）、`皇崗`（stop `12743`，只有 XB 跨境巴士）同 `落馬洲管制站`（舊道路口岸）；`SKILL.md` 同步 | 2026-11-01 |
