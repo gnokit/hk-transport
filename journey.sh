@@ -88,6 +88,7 @@ def _commands() -> tuple[Command, ...]:
                 f"TML {COST['line_speed_kmh']['TML']:g}, TCL {COST['line_speed_kmh']['TCL']:g}, "
                 f"urban {COST['line_speed_kmh']['ISL']:g} km/h. "
                 "Bus/minibus use the published whole-route time pro rata.",
+                "Headways and service hours come from the TD GTFS feed; routes outside the query time are removed. MTR heavy rail uses policy waits.",
                 "Rail boards cheaper and rides faster than bus/minibus.",
                 "Walking metres and minutes come from the Lands Department pedestrian network; when a walk has no route there, it is marked estimated.",
                 "No riding time is published, so a total duration is never given. No fares are included.",
@@ -98,6 +99,7 @@ def _commands() -> tuple[Command, ...]:
                 _required(ns.destination),
                 options=ns.options,
                 walk=ns.walk,
+                at=ns.time,
             ),
             (
                 Arg("origin", "Origin place, stop name, station name, or id.", metavar="origin"),
@@ -117,6 +119,13 @@ def _commands() -> tuple[Command, ...]:
                     metavar="metres",
                     kind=int,
                     default=800,
+                ),
+                Arg(
+                    "time",
+                    "Departure time in HKT (HH:MM or YYYY-MM-DD HH:MM). Default now.",
+                    flag="--time",
+                    metavar="time",
+                    default=None,
                 ),
             ),
         ),

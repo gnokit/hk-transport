@@ -36,6 +36,7 @@ def test_help_page_explains_the_weights_and_scope():
     assert "ride time" in result.stdout
     assert "MTR line speeds" in result.stdout
     assert "board wait" in result.stdout
+    assert "--time" in result.stdout
     assert "see COST" not in result.stdout
     assert "Peak Tram" in result.stdout
 

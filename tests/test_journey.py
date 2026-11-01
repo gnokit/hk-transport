@@ -134,6 +134,7 @@ def wired(monkeypatch):
             "note": None,
         },
     )
+    monkeypatch.setattr(j.headway_core, "service_at", lambda at: envelope({}))
     j.clear_cache()
     yield
     j.clear_cache()
@@ -473,6 +474,64 @@ def test_a_fast_published_bus_route_beats_a_slow_one(wired, monkeypatch):
         if leg["type"] == "ride"
     ]
     assert rides[0]["route"] == "F"
+
+
+def test_wait_cost_uses_headway_and_cap():
+    units = j._units()
+    assert j._wait_cost(units, 10) == 7500
+    assert j._wait_cost(units, 120) == 30000
+    assert j._wait_cost(units, None) is None
+
+
+def test_a_headway_changes_the_board_cost(wired, monkeypatch):
+    def score(service):
+        monkeypatch.setattr(j.headway_core, "service_at", lambda at: envelope(service))
+        j.clear_cache()
+        return j.journey("巴士一站", "巴士三站")["data"]["options"][0]["score"]
+
+    baseline = score({})
+    with_headway = score(
+        {
+            "100": {
+                "headway_minutes": 10.0,
+                "in_service": True,
+                "first": "06:00",
+                "last": "23:00",
+            }
+        }
+    )
+    assert with_headway < baseline
+
+
+def test_service_data_closes_a_route(wired, monkeypatch):
+    monkeypatch.setattr(
+        j.headway_core,
+        "service_at",
+        lambda at: envelope(
+            {
+                "100": {
+                    "headway_minutes": None,
+                    "in_service": False,
+                    "first": "06:00",
+                    "last": "23:00",
+                }
+            }
+        ),
+    )
+    j.clear_cache()
+    result = j.journey("巴士一站", "巴士三站")
+    assert result["data"] is None
+    assert "接不上" in result["note"]
+
+
+def test_at_is_in_the_answer(wired):
+    result = j.journey("巴士一站", "巴士二站", at="08:30")
+    assert "T08:30:00+08:00" in result["data"]["at"]
+
+
+def test_parse_at_rejects_bad_format():
+    with pytest.raises(j.MtrError):
+        j._parse_at("25:99")
 
 
 def test_consecutive_rides_on_the_same_route_merge():

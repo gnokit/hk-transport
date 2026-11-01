@@ -19,9 +19,10 @@ then the chosen walk legs are re-priced with the Lands Department pedestrian
 route search. A walk that turns out much longer than its straight line bans
 that point pair (or the origin/destination stop) and the search runs once more.
 
-Cost is policy minutes (board wait + ride distance/speed + dwell + walk),
-encoded as one integer for a plain Dijkstra. The weights are estimates, not
-ETAs or measured ride times.
+Cost is policy minutes (headway wait + ride time + walk), encoded as one
+integer for a plain Dijkstra. Bus/minibus waits use the Transport Department
+GTFS headway when it exists; MTR heavy rail keeps a policy wait. The weights
+are estimates, not ETAs or measured ride times.
 """
 
 from __future__ import annotations
@@ -31,18 +32,20 @@ import math
 import re
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime
 
 from hk_transport import (
     _places,
     bus_core,
     exits,
     ferry_core,
+    headway_core,
     minibus_core,
     mtr_core,
     pedroute,
     tram_core,
 )
-from hk_transport._result import compose
+from hk_transport._result import HKT, MtrError, compose
 
 _WALK = 800
 _LINK = 300
@@ -89,6 +92,13 @@ COST = {
         "minibus": 8.0,
         "ferry": 20.0,
     },
+    # The GTFS headway replaces board_minutes where it is available:
+    # E[W] = min(headway / 2, wait_cap_minutes), then wait_perception.
+    "wait_perception": 1.5,
+    "wait_cap_minutes": 20.0,
+    # A fixed cost per boarding. Charging it on the first boarding too is a
+    # constant offset, so it changes the score but not the ranking.
+    "transfer_penalty_minutes": 4.0,
     # Cruise speed while riding, by mode. MTR lines override via
     # line_speed_kmh. Bus/minibus use the published whole-route time when it is
     # available; these speeds are only the fallback.
@@ -142,6 +152,9 @@ def _units() -> dict:
             mode: round(minutes * scale)
             for mode, minutes in COST["board_minutes"].items()
         },
+        "wait_perception": COST["wait_perception"],
+        "wait_cap": COST["wait_cap_minutes"],
+        "transfer_penalty": round(COST["transfer_penalty_minutes"] * scale),
         "dwell": {
             mode: round(minutes * scale)
             for mode, minutes in COST["dwell_minutes"].items()
@@ -186,6 +199,55 @@ def _route_hop_cost(
     return round(published_minutes * share * COST["units_per_minute"])
 
 
+def _wait_cost(units: dict, headway_minutes: float | None) -> int | None:
+    """Expected wait for a headway: wait_perception × min(H/2, cap)."""
+    if headway_minutes is None or headway_minutes <= 0:
+        return None
+    minutes = units["wait_perception"] * min(
+        headway_minutes / 2, units["wait_cap"]
+    )
+    return round(minutes * COST["units_per_minute"])
+
+
+def _route_id(mode: str, key: tuple) -> str | None:
+    """The TD route id used by the GTFS headway files, if this mode has one."""
+    if mode in ("bus", "tram"):
+        return str(key[1])
+    if mode in ("minibus", "ferry"):
+        return str(key[0])
+    return None
+
+
+def _parse_at(value: str | None) -> datetime:
+    """Parse a query time; default to now in Hong Kong."""
+    if value is None:
+        return datetime.now(HKT)
+    text = value.strip()
+    if len(text) == 5 and text[2] == ":":
+        try:
+            clock = datetime.strptime(text, "%H:%M").time()
+        except ValueError:
+            pass
+        else:
+            today = datetime.now(HKT).date()
+            return datetime.combine(today, clock).replace(tzinfo=HKT)
+    for fmt in (
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%dT%H:%M",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S",
+    ):
+        try:
+            return datetime.strptime(text, fmt).replace(tzinfo=HKT)
+        except ValueError:
+            continue
+    raise MtrError(
+        "時間格式要係 HH:MM 或 YYYY-MM-DD HH:MM",
+        dataset_id=headway_core.DATASET,
+        endpoint="",
+    )
+
+
 def _note_from_cost() -> str:
     """Build NOTE from COST so the prose cannot drift from the table."""
     board = COST["board_minutes"]
@@ -193,10 +255,15 @@ def _note_from_cost() -> str:
     lines = COST["line_speed_kmh"]
     dwell = COST["dwell_minutes"]
     walk = COST["walk_minutes_per_km"]
+    wait_perception = COST["wait_perception"]
+    wait_cap = COST["wait_cap_minutes"]
+    transfer = COST["transfer_penalty_minutes"]
     return (
-        "排序用政策權重，唔係時間：轉車／上車罰分"
-        f"港鐵 {board['mtr']:g}、輕鐵／電車 {board['lightrail']:g}、"
+        "排序用政策權重，唔係時間：上車等候有 GTFS 班次時用 "
+        f"{wait_perception:g} × min(班距/2, {wait_cap:g}) 分鐘，"
+        f"冇資料時用港鐵 {board['mtr']:g}、輕鐵／電車 {board['lightrail']:g}、"
         f"巴士 {board['bus']:g}、小巴 {board['minibus']:g}、渡輪 {board['ferry']:g} 分鐘；"
+        f"每次上車另加 {transfer:g} 分鐘轉車罰分；"
         f"港鐵按線路速度（機場快線 {lines['AEL']:g}、東鐵 {lines['EAL']:g}、"
         f"屯馬 {lines['TML']:g}、東涌 {lines['TCL']:g}、市區 {lines['ISL']:g} km/h）"
         f"加每站 {dwell['mtr']:g} 分鐘；"
@@ -528,6 +595,8 @@ def _graph() -> dict:
 
     # Boarding goes straight to the next stop, so every ride moves at least one
     # stop and the search never needs to remember whether it has ridden.
+    # Board edges carry only the first hop; _dijkstra adds the wait and transfer
+    # penalty, so a query-time headway can change without rebuilding the graph.
     # Bus/minibus hops use the published whole-route time pro rata; other modes
     # use dwell + distance/speed.
     for (mode, key), stops in by_trip.items():
@@ -559,11 +628,10 @@ def _graph() -> dict:
                 hop = _ride_cost(
                     units, mode, metres, line=key[0] if mode == "mtr" else None
                 )
-            board = units["board"].get(mode, units["board"]["bus"])
             adjacency[board_point].append(
                 (
                     node,
-                    board + hop,
+                    hop,
                     "board",
                     (mode, key),
                 )
@@ -616,6 +684,8 @@ def _dijkstra(
     penalty: set | None = None,
     banned: set | None = None,
     hard_ban: set | None = None,
+    board_costs: dict[tuple, int] | None = None,
+    closed: set | None = None,
 ):
     """Shortest path that must ride, may not chain walks, and may end anywhere.
 
@@ -665,11 +735,17 @@ def _dijkstra(
                 and (meta[0], meta[1], point_key.get(target)) in hard_ban
             ):
                 continue
+            if closed and kind == "board" and meta in closed:
+                continue
             step = weight
-            if penalty and kind == "board" and meta in penalty:
-                step = weight + units["board"].get(
-                    meta[0], units["board"]["bus"]
-                )
+            if kind == "board":
+                board = (board_costs or {}).get(meta)
+                if board is None:
+                    board = units["board"].get(meta[0], units["board"]["bus"])
+                board += units["transfer_penalty"]
+                step = weight + board
+                if penalty and meta in penalty:
+                    step += board
             candidate = cost + step
             nxt = (target, stepping)
             if candidate < best.get(nxt, math.inf):
@@ -866,7 +942,17 @@ def _price_walks(legs: list[dict], budget: _WalkBudget, sources: list[dict]) -> 
     return {"pairs": pairs, "origins": origins, "dests": dests}
 
 
-def _search(graph, starts, end_weights, options: int, banned: set, origin_point, destination_point) -> list[dict]:
+def _search(
+    graph,
+    starts,
+    end_weights,
+    options: int,
+    banned: set,
+    origin_point,
+    destination_point,
+    board_costs: dict[tuple, int] | None = None,
+    closed: set | None = None,
+) -> list[dict]:
     chosen: list[dict] = []
     seen: set[tuple] = set()
     penalty: set = set()
@@ -887,6 +973,8 @@ def _search(graph, starts, end_weights, options: int, banned: set, origin_point,
             penalty,
             banned,
             hard_ban,
+            board_costs,
+            closed,
         )
         if found is None:
             break
@@ -907,9 +995,13 @@ def _search(graph, starts, end_weights, options: int, banned: set, origin_point,
         search_cost = total
         for _source, _target, kind, meta in path:
             if kind == "board" and penalty and meta in penalty:
-                search_cost -= graph["units"]["board"].get(
-                    meta[0], graph["units"]["board"]["bus"]
-                )
+                board = (board_costs or {}).get(meta)
+                if board is None:
+                    board = graph["units"]["board"].get(
+                        meta[0], graph["units"]["board"]["bus"]
+                    )
+                board += graph["units"]["transfer_penalty"]
+                search_cost -= board
         for leg in rides:
             penalty.update(
                 keys_by_label.get((leg["mode"], leg.get("operator"), leg.get("route")), set())
@@ -943,6 +1035,7 @@ def journey(
     destination: str,
     options: int = 3,
     walk: int = _WALK,
+    at: str | None = None,
 ) -> dict:
     """由一個地方去另一個地方，用晒所有已接入的交通網絡。
 
@@ -950,8 +1043,9 @@ def journey(
     `bus_core.td_bus_route_stops`（含城巴、新大嶼山、港鐵巴士）、
     綠色專線小巴 `minibus_core.gmb_route_stops`、電車 `tram_core.tram_stops`、
     渡輪 `ferry_core.ferry_stops`、車站座標 `exits.mtr_station_points`、
-    步行 `pedroute.walk_route`、地名 `geocode.place_search`。
-    用法：`journey("元州邨", "香港迪士尼樂園")`。
+    班次同服務時間 `headway_core.service_at`、步行 `pedroute.walk_route`、
+    地名 `geocode.place_search`。
+    用法：`journey("元州邨", "香港迪士尼樂園", at="08:30")`。
     市民會問：由我呢度去 X，搭咩車？要唔要轉車？行幾遠？
 
     交還多個方案，每個帶步行段同乘車段。成本係政策分鐘（上車等候、
@@ -972,6 +1066,35 @@ def journey(
     end_point, note = _places.place(destination, points)
     if end_point is None:
         return compose(sources, None, note=note)
+
+    at_time = _parse_at(at)
+    board_costs: dict[tuple, int] = {}
+    closed: set[tuple] = set()
+    headway_note = ""
+    try:
+        headway = headway_core.service_at(at_time)
+        service = headway.get("data") or {}
+        sources.append(headway)
+        for mode, key in graph["labels"]:
+            route_id = _route_id(mode, key)
+            if route_id is None:
+                continue
+            info = service.get(route_id)
+            if not info:
+                continue
+            if info.get("in_service") is False:
+                closed.add((mode, key))
+                continue
+            wait = _wait_cost(graph["units"], info.get("headway_minutes"))
+            if wait is not None:
+                board_costs[(mode, key)] = wait
+        headway_note = (
+            "班次同服務時間按查詢時間的 GTFS 資料；"
+            "港鐵重鐵冇服務時間數據，深夜的港鐵方案未必有車；"
+            "其他冇班次資料的路線亦用政策值。"
+        )
+    except Exception:  # a failed feed must not lose the journey
+        headway_note = "班次資料不可用，等候同服務時間用政策值。"
 
     wide = max(walk, _WALK_RETRY)
     origin_edges = _nearby(points, start_point["latitude"], start_point["longitude"], walk)
@@ -1019,7 +1142,15 @@ def journey(
         if not starts or not end_weights:
             break  # keep previous chosen (same as empty search)
         found = _search(
-            graph, starts, end_weights, options, banned, start_point, end_point
+            graph,
+            starts,
+            end_weights,
+            options,
+            banned,
+            start_point,
+            end_point,
+            board_costs,
+            closed,
         )
         if not found:
             break  # keep the first-pass options if a retry finds nothing
@@ -1050,7 +1181,11 @@ def journey(
     sources.extend(walk_sources)
 
     if not chosen:
-        return compose(sources, None, note=NOTE + "這兩個地方在已接入的網絡上接不上。")
+        return compose(
+            sources,
+            None,
+            note=NOTE + "這兩個地方在已接入的網絡上接不上。" + headway_note,
+        )
 
     kept = [option for option in chosen if option["walk_metres"] <= _WALK_CAP]
     if not kept:
@@ -1058,23 +1193,24 @@ def journey(
         extra = f"每個方案的總步行都超過 {_WALK_CAP} 米，這裡只列最短的一個。"
     else:
         extra = ""
-    # A night route may be the cheapest on paper, but at 2 pm it may not run.
-    # There is no service-hours data, so the only honest move is to rank it
-    # below every day option and say so.
+    # Where GTFS says a route is closed, `closed` has already removed it from
+    # the search. Routes without service data stay in the graph, so keep the
+    # night hint and rank them below every day option.
     kept.sort(key=lambda option: (option["overnight_hint"], option["score"]))
     shown = kept[:options]
     overnight = sum(1 for option in shown if option["overnight_hint"])
     if overnight:
         extra += (
             f"其中 {overnight} 個方案用通宵線（N 字頭），日間未必有車。"
-            "服務時間同班次冇數據，請向營辦商確認。"
+            "服務時間同班次以 GTFS 為準；冇資料的路線請向營辦商確認。"
         )
     return compose(
         sources,
         {
             "origin": start_point,
             "destination": end_point,
+            "at": at_time.isoformat(),
             "options": shown,
         },
-        note=NOTE + widened + extra,
+        note=NOTE + widened + extra + headway_note,
     )
