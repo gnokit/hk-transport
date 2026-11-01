@@ -13,7 +13,17 @@ def stop(stop_id, name, latitude, longitude):
     }
 
 
-def td_row(company, route, route_id, seq, stop_id, name, latitude, longitude):
+def td_row(
+    company,
+    route,
+    route_id,
+    seq,
+    stop_id,
+    name,
+    latitude,
+    longitude,
+    journey_time_minutes=None,
+):
     return {
         "company": company,
         "route": route,
@@ -30,7 +40,7 @@ def td_row(company, route, route_id, seq, stop_id, name, latitude, longitude):
         "longitude": longitude,
         "pick_drop": 3,
         "fare": 5.0,
-        "journey_time_minutes": 30.0,
+        "journey_time_minutes": journey_time_minutes,
     }
 
 
@@ -428,6 +438,41 @@ def test_ride_cost_uses_distance_and_speed():
     assert long > short
     # same metres: faster mode costs less travel (dwell still applies)
     assert j._ride_cost(units, "mtr", 5000) < j._ride_cost(units, "bus", 5000)
+
+
+def test_mtr_line_speeds_differ():
+    units = j._units()
+    assert j._ride_cost(units, "mtr", 20000, line="AEL") < j._ride_cost(
+        units, "mtr", 20000, line="ISL"
+    )
+    assert j._ride_cost(units, "mtr", 20000, line="EAL") < j._ride_cost(
+        units, "mtr", 20000
+    )
+
+
+def test_a_bus_hop_uses_the_published_whole_route_time():
+    units = j._units()
+    # 60 minutes for 10 km: a 1 km hop is 6 minutes, with no extra dwell.
+    assert j._route_hop_cost(units, 60.0, 1000, 10000) == 6000
+    assert j._route_hop_cost(units, None, 1000, 10000) is None
+    assert j._route_hop_cost(units, 60.0, 1000, 0) is None
+
+
+def test_a_fast_published_bus_route_beats_a_slow_one(wired, monkeypatch):
+    rows = [
+        td_row("KMB", "F", 601, 1, "A", "甲站", 22.0, 114.0, 10.0),
+        td_row("KMB", "F", 601, 2, "B", "乙站", 22.01, 114.01, 10.0),
+        td_row("KMB", "S", 602, 1, "A", "甲站", 22.0, 114.0, 60.0),
+        td_row("KMB", "S", 602, 2, "B", "乙站", 22.01, 114.01, 60.0),
+    ]
+    monkeypatch.setattr(j.bus_core, "td_bus_route_stops", lambda: envelope(rows))
+    j.clear_cache()
+    rides = [
+        leg
+        for leg in j.journey("甲站", "乙站")["data"]["options"][0]["legs"]
+        if leg["type"] == "ride"
+    ]
+    assert rides[0]["route"] == "F"
 
 
 def test_consecutive_rides_on_the_same_route_merge():

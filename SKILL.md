@@ -103,7 +103,7 @@ Answer the person in Traditional Chinese.
 
 Any point-to-point question goes to `journey.sh journey`. It searches the railway, the buses and the green minibuses as **one graph**, with walking at both ends and between stops.
 
-- **Ranking is a policy, not a measurement.** Each mode has a boarding wait, a cruising speed and a per-stop dwell; walking is 15 minutes per kilometre. Rail has the cheapest board and the highest speed, so a long rail ride can outrank a short bus loop. The command's `note` repeats the current values; say they are assumptions, not measurements. `score` is a policy weight, not minutes — never quote it as a journey time.
+- **Ranking is a policy, not a measurement.** Each mode has a boarding wait; MTR adds a per-line speed and a per-stop dwell, while bus/minibus use the operator's published whole-route time pro rata. Walking is 15 minutes per kilometre. Rail has the cheapest board and the highest speed, so a long rail ride can outrank a short bus loop. The command's `note` repeats the current values; say they are assumptions, not measurements. `score` is a policy weight, not minutes — never quote it as a journey time.
 - **Walking is real, not straight-line.** Metres and minutes come from the Lands Department pedestrian network. A leg marked `estimated: true` means that network had no route and the figure is straight-line — say which it is.
 - **Night routes are marked and ranked last.** A route code starting with `N` gets `overnight_hint: true` and sorts after every day option. Say so when it appears — there is no service-hours data, so the flag is a warning, not a timetable.
 - **There is no riding time.** Never add up a total duration. The walk minutes are the only minutes the answer contains.

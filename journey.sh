@@ -80,10 +80,14 @@ def _commands() -> tuple[Command, ...]:
             (
                 "One search over MTR, every franchised bus, green minibus, tram and ferry.",
                 "Each option lists its walk legs and its ride legs, in order.",
-                "Ranking uses policy minutes: board wait + ride distance/speed + dwell + walking.",
+                "Ranking uses policy minutes: board wait + ride time + walking.",
                 f"Board wait: MTR {COST['board_minutes']['mtr']:g}, light rail {COST['board_minutes']['lightrail']:g}, "
                 f"tram {COST['board_minutes']['tram']:g}, bus {COST['board_minutes']['bus']:g}, "
                 f"minibus {COST['board_minutes']['minibus']:g}, ferry {COST['board_minutes']['ferry']:g} minutes.",
+                f"MTR line speeds: AEL {COST['line_speed_kmh']['AEL']:g}, EAL {COST['line_speed_kmh']['EAL']:g}, "
+                f"TML {COST['line_speed_kmh']['TML']:g}, TCL {COST['line_speed_kmh']['TCL']:g}, "
+                f"urban {COST['line_speed_kmh']['ISL']:g} km/h. "
+                "Bus/minibus use the published whole-route time pro rata.",
                 "Rail boards cheaper and rides faster than bus/minibus.",
                 "Walking metres and minutes come from the Lands Department pedestrian network; when a walk has no route there, it is marked estimated.",
                 "No riding time is published, so a total duration is never given. No fares are included.",

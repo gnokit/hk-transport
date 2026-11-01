@@ -89,14 +89,31 @@ COST = {
         "minibus": 8.0,
         "ferry": 20.0,
     },
-    # cruise speed while riding, by mode. Hop cost = dwell + distance/speed.
+    # Cruise speed while riding, by mode. MTR lines override via
+    # line_speed_kmh. Bus/minibus use the published whole-route time when it is
+    # available; these speeds are only the fallback.
     "speed_kmh": {
-        "mtr": 33.0,
+        "mtr": 40.0,
         "lightrail": 25.0,
         "tram": 10.0,
         "bus": 15.0,
         "minibus": 15.0,
         "ferry": 20.0,
+    },
+    # Cruise estimates, not measured averages. Dwell is added separately; the
+    # values are chosen so that a whole line plus dwell is close to a typical
+    # end-to-end time.
+    "line_speed_kmh": {
+        "AEL": 80.0,
+        "EAL": 55.0,
+        "TML": 50.0,
+        "TCL": 60.0,
+        "ISL": 40.0,
+        "TWL": 40.0,
+        "KTL": 40.0,
+        "TKL": 40.0,
+        "SIL": 40.0,
+        "DRL": 40.0,
     },
     # seconds-scale stop at each station/pier, converted to policy minutes.
     "dwell_minutes": {
@@ -130,17 +147,21 @@ def _units() -> dict:
             for mode, minutes in COST["dwell_minutes"].items()
         },
         "speed_kmh": dict(COST["speed_kmh"]),
+        "line_speed_kmh": dict(COST["line_speed_kmh"]),
     }
 
 
-def _ride_cost(units: dict, mode: str, metres: float) -> int:
+def _ride_cost(units: dict, mode: str, metres: float, line: str | None = None) -> int:
     """Ride weight for metres on a mode: dwell + travel time from speed.
 
-    Unknown modes fall back to bus.
+    MTR lines may override the mode speed. Unknown modes fall back to bus.
     """
     speeds = units["speed_kmh"]
     dwells = units["dwell"]
-    speed = speeds.get(mode, speeds["bus"])
+    if mode == "mtr" and line:
+        speed = units["line_speed_kmh"].get(line, speeds.get("mtr", speeds["bus"]))
+    else:
+        speed = speeds.get(mode, speeds["bus"])
     dwell = dwells.get(mode, dwells["bus"])
     if speed <= 0:
         speed = speeds["bus"]
@@ -148,22 +169,41 @@ def _ride_cost(units: dict, mode: str, metres: float) -> int:
     return dwell + travel
 
 
+def _route_hop_cost(
+    units: dict,
+    published_minutes: float | None,
+    metres: float,
+    total_metres: float,
+) -> int | None:
+    """A bus/minibus hop priced from the published whole-route time.
+
+    The published figure includes stops, so the caller must not add dwell when
+    this returns a number. Returns None when the route has no usable time.
+    """
+    if published_minutes is None or published_minutes <= 0 or total_metres <= 0:
+        return None
+    share = metres / total_metres
+    return round(published_minutes * share * COST["units_per_minute"])
+
+
 def _note_from_cost() -> str:
     """Build NOTE from COST so the prose cannot drift from the table."""
     board = COST["board_minutes"]
     speed = COST["speed_kmh"]
+    lines = COST["line_speed_kmh"]
     dwell = COST["dwell_minutes"]
     walk = COST["walk_minutes_per_km"]
     return (
         "排序用政策權重，唔係時間：轉車／上車罰分"
         f"港鐵 {board['mtr']:g}、輕鐵／電車 {board['lightrail']:g}、"
         f"巴士 {board['bus']:g}、小巴 {board['minibus']:g}、渡輪 {board['ferry']:g} 分鐘；"
-        f"車速港鐵 {speed['mtr']:g}、輕鐵 {speed['lightrail']:g}、"
-        f"電車 {speed['tram']:g}、巴士 {speed['bus']:g}、小巴 {speed['minibus']:g}、"
-        f"渡輪 {speed['ferry']:g} km/h；"
-        f"每站停站港鐵 {dwell['mtr']:g}、輕鐵 {dwell['lightrail']:g}、"
-        f"電車 {dwell['tram']:g}、巴士 {dwell['bus']:g}、"
-        f"小巴 {dwell['minibus']:g}、渡輪 {dwell['ferry']:g} 分鐘；"
+        f"港鐵按線路速度（機場快線 {lines['AEL']:g}、東鐵 {lines['EAL']:g}、"
+        f"屯馬 {lines['TML']:g}、東涌 {lines['TCL']:g}、市區 {lines['ISL']:g} km/h）"
+        f"加每站 {dwell['mtr']:g} 分鐘；"
+        "巴士／小巴用運輸署公布的全線時間按距離比例分配，不再加停站；"
+        f"輕鐵 {speed['lightrail']:g}、電車 {speed['tram']:g}、"
+        f"渡輪 {speed['ferry']:g} km/h，每站停站 "
+        f"{dwell['lightrail']:g}／{dwell['tram']:g}／{dwell['ferry']:g} 分鐘；"
         f"步行一公里當 {walk:g} 分鐘。"
         "呢啲係估算假設，唔係量度出嚟的時間。"
         "已接入：港鐵、九巴／龍運、城巴、新大嶼山、港鐵巴士、綠色專線小巴、電車、渡輪，以及少量離島同跨境路線。"
@@ -249,6 +289,7 @@ def _trip_rows(
                 "stop": row["stop"],
                 "route": row["route"],
                 "operator": row["company"],
+                "journey_time_minutes": row.get("journey_time_minutes"),
             }
         )
     for row in gmb_rows["data"]:
@@ -266,6 +307,7 @@ def _trip_rows(
                 "stop": row["stop"],
                 "route": row["route"],
                 "operator": "GMB",
+                "journey_time_minutes": row.get("journey_time_minutes"),
             }
         )
     # Only Hong Kong Tramways here: see _EXCLUDED_MODES.
@@ -467,10 +509,13 @@ def _graph() -> dict:
     points = _point_table(bus, gmb_stops, stations)
     by_trip: dict[tuple[str, tuple], list[tuple[float, str]]] = defaultdict(list)
     labels: dict[tuple[str, tuple], dict] = {}
+    trip_minutes: dict[tuple[str, tuple], float] = {}
     for row in trips:
         if row["point"] not in points:
             continue
         by_trip[(row["mode"], row["key"])].append((row["seq"], row["point"]))
+        if row.get("journey_time_minutes") is not None:
+            trip_minutes.setdefault((row["mode"], row["key"]), row["journey_time_minutes"])
         labels.setdefault(
             (row["mode"], row["key"]),
             {"route": row["route"], "operator": row["operator"]},
@@ -483,11 +528,23 @@ def _graph() -> dict:
 
     # Boarding goes straight to the next stop, so every ride moves at least one
     # stop and the search never needs to remember whether it has ridden.
-    # Hop weight is dwell + distance/speed between consecutive stop points.
+    # Bus/minibus hops use the published whole-route time pro rata; other modes
+    # use dwell + distance/speed.
     for (mode, key), stops in by_trip.items():
         stops.sort()
         if len(stops) < 2:
             continue
+        distances = [
+            _places.distance(
+                points[a[1]]["latitude"],
+                points[a[1]]["longitude"],
+                points[b[1]]["latitude"],
+                points[b[1]]["longitude"],
+            )
+            for a, b in zip(stops, stops[1:])
+        ]
+        total_metres = sum(distances)
+        published_minutes = trip_minutes.get((mode, key))
         previous = None
         for position in range(1, len(stops)):
             node = len(nodes)
@@ -496,15 +553,12 @@ def _graph() -> dict:
             from_key = stops[position - 1][1]
             to_key = stops[position][1]
             board_point = point_index[from_key]
-            from_row = points[from_key]
-            to_row = points[to_key]
-            metres = _places.distance(
-                from_row["latitude"],
-                from_row["longitude"],
-                to_row["latitude"],
-                to_row["longitude"],
-            )
-            hop = _ride_cost(units, mode, metres)
+            metres = distances[position - 1]
+            hop = _route_hop_cost(units, published_minutes, metres, total_metres)
+            if hop is None:
+                hop = _ride_cost(
+                    units, mode, metres, line=key[0] if mode == "mtr" else None
+                )
             board = units["board"].get(mode, units["board"]["bus"])
             adjacency[board_point].append(
                 (
