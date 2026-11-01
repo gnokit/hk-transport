@@ -62,8 +62,13 @@ _BAD_WALK_RATIO = 2.5
 _WALK_RETRY = 1500
 _WALK_CAP = 1500
 _WALK_CALLS = 12
+_WALK_CALLS_MAX = 40
 _END = -1
-_OVERNIGHT = re.compile(r"^N\d")
+# Night bus routes are N-numbered (N241, N8P). LWB's overnight airport
+# routes use NA (NA43) and KMB's overnight cross-border route uses NB
+# (NB73). Residents' routes also start with N (NR330), but they are not
+# overnight, so the letter after N must be A or B or a digit.
+_OVERNIGHT = re.compile(r"^N(?:[AB])?\d")
 
 # The routing policy. There is no ride-time data in Hong Kong, so these are
 # judgements, not measurements: the answer never prints them, it only ranks.
@@ -173,7 +178,7 @@ NOTE = _note_from_cost()
 _memory: dict | None = None
 # Process-level pedroute cache keyed by rounded (from, to) coords. Survives
 # across journey() calls in the same process; cleared with clear_cache().
-_walk_cache: dict[tuple, dict | None] = {}
+_walk_cache: dict[tuple, dict] = {}
 
 
 @dataclass
@@ -204,6 +209,17 @@ def _walk_cache_key(
         (round(from_lat, 5), round(from_lon, 5)),
         (round(to_lat, 5), round(to_lon, 5)),
     )
+
+
+def _remember_source(sources: list[dict], result: dict) -> None:
+    """Add a walk source once; a cache hit still has to be auditable."""
+    for source in sources:
+        if (
+            source.get("endpoint") == result.get("endpoint")
+            and source.get("retrieved_at") == result.get("retrieved_at")
+        ):
+            return
+    sources.append(result)
 
 
 def _trip_rows(
@@ -589,7 +605,11 @@ def _dijkstra(
                 pair = frozenset((point_key.get(node), point_key.get(target)))
                 if pair in banned:
                     continue
-            if hard_ban and kind == "board" and meta in hard_ban:
+            if (
+                hard_ban
+                and kind == "alight"
+                and (meta[0], meta[1], point_key.get(target)) in hard_ban
+            ):
                 continue
             step = weight
             if penalty and kind == "board" and meta in penalty:
@@ -696,6 +716,33 @@ def _legs(path, graph, origin_point, destination_point) -> list[dict]:
     return legs
 
 
+def _merge_same_route(legs: list[dict]) -> list[dict]:
+    """Join consecutive rides on the same route at the same point.
+
+    The graph keys a line by direction, so a through ride can come back as two
+    "rides" at a shared stop. That is not a transfer, and it must not become a
+    separate option just because the ride signature differs.
+    """
+    merged: list[dict] = []
+    for leg in legs:
+        previous = merged[-1] if merged else None
+        if (
+            previous is not None
+            and leg.get("type") == "ride"
+            and previous.get("type") == "ride"
+            and leg.get("mode") == previous.get("mode")
+            and leg.get("route") == previous.get("route")
+            and leg.get("operator") == previous.get("operator")
+            and leg.get("board_point") == previous.get("alight_point")
+        ):
+            previous["stops"] += leg["stops"]
+            previous["alight"] = leg["alight"]
+            previous["alight_point"] = leg["alight_point"]
+            continue
+        merged.append(leg)
+    return merged
+
+
 def _score_after_walks(option: dict, old_walk_metres: float, units: dict) -> int:
     """Adjust Dijkstra search_cost by the walk-metre delta after pedroute reprice.
 
@@ -728,11 +775,10 @@ def _price_walks(legs: list[dict], budget: _WalkBudget, sources: list[dict]) -> 
         to_lat = leg["to"]["latitude"]
         to_lon = leg["to"]["longitude"]
         cache_key = _walk_cache_key(from_lat, from_lon, to_lat, to_lon)
-        if cache_key in _walk_cache:
-            data = _walk_cache[cache_key]
-            if data is None:
-                leg["estimated"] = True
-                continue
+        cached = _walk_cache.get(cache_key)
+        if cached is not None:
+            payload = cached.get("data") or {}
+            _remember_source(sources, cached)
         else:
             if not budget.take():
                 leg["estimated"] = True
@@ -740,25 +786,21 @@ def _price_walks(legs: list[dict], budget: _WalkBudget, sources: list[dict]) -> 
             try:
                 result = pedroute.walk_route(from_lat, from_lon, to_lat, to_lon)
             except Exception:  # a failed walk must not lose the journey
-                _walk_cache[cache_key] = None
                 leg["estimated"] = True
                 continue
-            sources.append(result)
-            payload = result["data"] or {}
-            if payload.get("found"):
-                data = {
-                    "metres": payload["metres"],
-                    "minutes": payload["minutes"],
-                }
-                _walk_cache[cache_key] = data
-            else:
-                _walk_cache[cache_key] = None
+            payload = result.get("data") or {}
+            if not payload.get("found"):
                 leg["estimated"] = True
                 continue
+            _walk_cache[cache_key] = result
+            _remember_source(sources, result)
+        if not payload.get("found"):
+            leg["estimated"] = True
+            continue
         leg["straight_line_metres"] = straight
-        leg["metres"] = round(data["metres"])
-        leg["minutes"] = round(data["minutes"], 1)
-        if data["metres"] > straight * _BAD_WALK_RATIO:
+        leg["metres"] = round(payload["metres"])
+        leg["minutes"] = round(payload["minutes"], 1)
+        if payload["metres"] > straight * _BAD_WALK_RATIO:
             from_point = leg.get("from_point")
             to_point = leg.get("to_point")
             if from_point and to_point:
@@ -777,7 +819,9 @@ def _search(graph, starts, end_weights, options: int, banned: set, origin_point,
     hard_ban: set = set()
     keys_by_label: dict[tuple, set] = defaultdict(set)
     for (mode, key), label in graph["labels"].items():
-        # Penalty / hard_ban compare against board meta `(mode, key)`.
+        # Penalty compares against board meta `(mode, key)`. A duplicate bans
+        # alighting at one stop, not the whole route, so another alight on the
+        # same line stays available.
         keys_by_label[(mode, label["operator"], label["route"])].add((mode, key))
     for _ in range(options * 2):
         found = _dijkstra(
@@ -793,7 +837,9 @@ def _search(graph, starts, end_weights, options: int, banned: set, origin_point,
         if found is None:
             break
         path, total = found
-        legs = _legs(path, graph, origin_point, destination_point)
+        raw_legs = _legs(path, graph, origin_point, destination_point)
+        raw_rides = [leg for leg in raw_legs if leg["type"] == "ride"]
+        legs = _merge_same_route(raw_legs)
         rides = [leg for leg in legs if leg["type"] == "ride"]
         if not rides:
             break
@@ -801,12 +847,26 @@ def _search(graph, starts, end_weights, options: int, banned: set, origin_point,
             (leg["mode"], leg.get("route"), leg["board_point"], leg["alight_point"])
             for leg in rides
         )
+        # The search priced this path with the penalties accumulated *before*
+        # this iteration. Remove them before recording the cost, otherwise the
+        # public score would not match the legs after a retry.
+        search_cost = total
+        for _source, _target, kind, meta in path:
+            if kind == "board" and penalty and meta in penalty:
+                search_cost -= graph["units"]["board"].get(
+                    meta[0], graph["units"]["board"]["bus"]
+                )
         for leg in rides:
             penalty.update(
                 keys_by_label.get((leg["mode"], leg.get("operator"), leg.get("route")), set())
             )
         if signature in seen:
-            hard_ban.update(leg["trip"] for leg in rides)
+            # A duplicate is the same sequence of rides. Banning the whole
+            # (mode, key) trip would remove every other alight on that line,
+            # so ban only the last ride's alighting point. The trunk ride from
+            # the origin stays available for a different final leg.
+            last = raw_rides[-1]
+            hard_ban.add((last["mode"], last["trip"][1], last["alight_point"]))
             continue
         seen.add(signature)
         chosen.append(
@@ -815,7 +875,7 @@ def _search(graph, starts, end_weights, options: int, banned: set, origin_point,
                 "overnight_hint": any(leg.get("overnight") for leg in rides),
                 "stops": sum(leg["stops"] for leg in rides),
                 "walk_metres": sum(leg["metres"] for leg in legs if leg["type"] == "walk"),
-                "search_cost": total,
+                "search_cost": search_cost,
                 "legs": legs,
             }
         )
@@ -890,7 +950,7 @@ def journey(
     banned_dests: set = set()
     chosen: list[dict] = []
     walk_sources: list[dict] = []
-    walk_budget_calls = max(_WALK_CALLS, options * 4)
+    walk_budget_calls = min(max(_WALK_CALLS, options * 4), _WALK_CALLS_MAX)
     for attempt in range(2):
         starts = [
             (cost, node)
@@ -925,6 +985,9 @@ def journey(
                 leg["metres"] for leg in option["legs"] if leg["type"] == "walk"
             )
             option["score"] = _score_after_walks(option, old_walk, graph["units"])
+            # search_cost is an internal Dijkstra weight, not a time. Do not
+            # expose it next to score, where a reader could mistake it for one.
+            option.pop("search_cost", None)
         if not (bad_pairs or bad_origins or bad_dests) or attempt == 1:
             break
         banned = bad_pairs

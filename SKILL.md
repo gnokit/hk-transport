@@ -66,7 +66,7 @@ A few names are two stations: 香港 has an Airport Express id and a Tung Chung 
 
 This skill covers **Hong Kong–side** public transport only. Do not plan rides on the Mainland network, cross-boundary coaches as a product, co-located Mainland halls, or high-speed rail through 西九龍. If the person asks to cross the boundary or ride 高鐵／跨境鐵路, say 「這個問題超出 hk-transport（港交寶）的範圍。」
 
-Place search and stop names often collide with Mainland port names (福田、羅湖、皇崗、蓮塘、深圳灣). When the origin or destination is clearly one of the ports below (or a close alias), **do not** trust the first `place_search` hit blindly. Prefer the **journey input name** in the table (official stop or station wording), and treat the listed WGS84 coordinates as the intended point. Say which port point you used.
+Place search and stop names often collide with Mainland port names (福田、羅湖、皇崗、蓮塘、深圳灣). When the origin or destination is clearly one of the ports below (or a close alias), **do not** trust the first `place_search` hit blindly. Prefer the **journey input name** in the table (official stop or station wording). `journey.sh` does not accept coordinates: when place search returns several hits, choose the one nearest the listed WGS84 point, and say which port point you used.
 
 Coordinates are from Lands Department place search, MTR exit snapshot, or TD `JSON_BUS` stop geometry (retrieved 2026-10-31 HKT unless noted). Round-trip checks: lat/lon are Hong Kong side unless marked avoid.
 
@@ -74,11 +74,12 @@ Coordinates are from Lands Department place search, MTR exit snapshot, or TD `JS
 | --- | --- | --- | --- | --- |
 | 羅湖、羅湖站、羅湖管制站、羅湖口岸（港方） | `羅湖` (MTR) or `港鐵羅湖站` | 22.527639 | 114.113235 | MTR only to the control point. Exit A ≈ 22.529048, 114.113419; ImmD hall place `羅湖出入境管制站` ≈ 22.529477, 114.113664. |
 | 落馬洲支線、落馬洲站、福田口岸（港方過關）、落馬洲站福田口岸 | `落馬洲站 ‧ 福田口岸` | 22.515513 | 114.066528 | KMB/TD stop id `12729` (B1 terminus). **Preferred** over bare `落馬洲站` (place ≈ 22.515034, 114.065624), which can enter via bus loops. MTR `落馬洲` / exit A ≈ 22.514899, 114.066198 (`mtr:78`). Spur-line CP reporting centre ≈ 22.514953, 114.065663. |
-| 落馬洲管制站、皇崗（道路口岸／港方）、往皇崗巴士 | `落馬洲管制站` | 22.509242 | 114.074162 | Road crossing to Huanggang — **not** the Spur Line MTR station. San Tin PTI `新田運輸交匯處` ≈ 22.503179, 114.081932. |
-| 皇崗口岸、皇崗 (bare Mainland-style) | Do **not** use TD stops `皇崗` / `皇崗口岸` | 22.522901 / 22.523199 | 114.067095 / 114.067601 | Those bus geometries sit on the **cross-boundary / Shenzhen-side** naming. Remap to `落馬洲管制站` or ask road vs Spur Line. |
+| 落馬洲管制站、落馬洲道路口岸（舊皇崗道路過境） | `落馬洲管制站` | 22.509242 | 114.074162 | 舊道路過境點，**唔係**新皇崗口岸港方口岸區，亦唔係落馬洲支線站。新田運輸交匯處 ≈ 22.503179, 114.081932。 |
+| 皇崗口岸、新皇崗口岸、皇崗管制站（港方口岸區） | `皇崗口岸` (TD stop `10000421`) | 22.523199 | 114.067601 | 新皇崗口岸港方口岸區：KMB B10/B11/NB73、CTB B13/B14/B15、NLB B12。Place `皇崗管制站` ≈ 22.523179, 114.067682。 |
+| 皇崗、皇崗穿梭巴士（只有跨境巴士） | 唔好用 TD stop `皇崗` (`12743`) | 22.522901 | 114.067095 | 只有 `companyCode` XB 的跨境巴士；XB 唔入 `journey`。去新口岸請用上面的 `皇崗口岸`。 |
 | 深圳灣、深圳灣口岸、深圳灣管制站 | `深圳灣口岸` (bus stop) | 22.501407 | 113.945805 | TD stop id `12728` (e.g. B3). ImmD `深圳灣出入境管制站` ≈ 22.493822, 113.945433. Closed area. |
 | 文錦渡、文錦渡管制站 | `文錦渡管制站` | 22.537416 | 114.128813 | Nearest KMB often `文錦渡(新屋嶺村)` ≈ 22.534554, 114.131760. |
-| 沙頭角、沙頭角管制站 | `沙頭角管制站` | 22.549083 | 114.223287 | ImmD: passenger/cargo clearance **suspended**. Bus `沙頭角總站` ≈ 22.545561, 114.223655. |
+| 沙頭角、沙頭角管制站 | `沙頭角管制站` | 22.549083 | 114.223287 | ImmD: passenger/cargo clearance **suspended** (as of 2026-10-31). Bus `沙頭角總站` ≈ 22.545561, 114.223655. |
 | 香園圍、香園圍管制站、蓮塘（港方） | `香園圍管制站` or bus `香園圍口岸` | 22.552296 / 22.552023 | 114.153809 / 114.154115 | Mainland name is 蓮塘; keep HK wording for search. |
 | 港珠澳、港珠澳大橋、港珠澳大橋香港口岸 | `港珠澳大橋香港口岸` | 22.316145 | 113.950624 | TD stop `13345` (PTI). 旅檢大樓 / stop `13346` ≈ 22.317291, 113.950292. Place search pin ≈ 22.317343, 113.955271. |
 | 高鐵西九龍、西九龍站（過關／高鐵） | Out of scope for cross-boundary rail | — | — | Local buses to the building are OK (`西九龍站` ≈ 22.304021, 114.166529; place `香港西九龍站` ≈ 22.303298, 114.165180) but do not sell a 高鐵 journey. |
@@ -102,7 +103,7 @@ Answer the person in Traditional Chinese.
 
 Any point-to-point question goes to `journey.sh journey`. It searches the railway, the buses and the green minibuses as **one graph**, with walking at both ends and between stops.
 
-- **Ranking is a policy, not a measurement.** One stop counts as 2 minutes, walking as 15 minutes per kilometre, and waiting for the next vehicle as 4 minutes (MTR, tram) to 25 (ferry). Say that when the person asks why one option is first — and never present it as a journey time.
+- **Ranking is a policy, not a measurement.** Each mode has a boarding wait, a cruising speed and a per-stop dwell; walking is 15 minutes per kilometre. Rail has the cheapest board and the highest speed, so a long rail ride can outrank a short bus loop. The command's `note` repeats the current values; say they are assumptions, not measurements. `score` is a policy weight, not minutes — never quote it as a journey time.
 - **Walking is real, not straight-line.** Metres and minutes come from the Lands Department pedestrian network. A leg marked `estimated: true` means that network had no route and the figure is straight-line — say which it is.
 - **Night routes are marked and ranked last.** A route code starting with `N` gets `overnight_hint: true` and sorts after every day option. Say so when it appears — there is no service-hours data, so the flag is a warning, not a timetable.
 - **There is no riding time.** Never add up a total duration. The walk minutes are the only minutes the answer contains.
