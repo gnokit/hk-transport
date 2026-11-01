@@ -168,3 +168,55 @@ def place(query: str, stops: dict[str, dict]) -> tuple[dict | None, str | None]:
         },
         None,
     )
+
+
+def name_fallback(query: str, stops: dict[str, dict]) -> tuple[dict | None, str | None]:
+    """A stop whose own name appears inside the query, when the place point fails.
+
+    The Lands Department place search answers a large facility with one label
+    point, and for a big site that point can be kilometres from any entrance.
+    "香港國際機場" comes back at 22.3140, 113.9127, which is 2.4 km from the
+    terminal and 1 795 m from the nearest stop, so the radius search finds
+    nothing and a normal trip (機場 → 中環) answers "接不上".
+
+    The stop table does know the entrances: the station is named 機場 and the
+    bus terminus is 機場(地面運輸中心)巴士總站. This looks for a stop whose own
+    name sits inside the query and returns the longest such name, so a place
+    that already resolved never reaches this function.
+
+    Call it only after a normal place lookup has left nothing inside the walking
+    radius. It returns the stop as a point plus a note naming what it used, so
+    the answer can say the origin is a station and not the place itself.
+    """
+    text = query.strip()
+    if len(text) < 2:
+        return None, None
+    best: tuple[tuple[int, int], dict] | None = None
+    for row in stops.values():
+        if row["latitude"] is None or row["longitude"] is None:
+            continue
+        for name in (row.get("name_zh"), row.get("name_en")):
+            if not name or len(name) < 2 or name not in text:
+                continue
+            # Longest name wins; on a tie the one nearer the end of the query
+            # wins, because a facility name puts its place type last
+            # (香港國際機場 ends in 機場, not 香港).
+            rank = (len(name), text.rfind(name))
+            if best is None or rank > best[0]:
+                best = (rank, row)
+            break
+    if best is None:
+        return None, None
+    _, row = best
+    point = {
+        "query": text,
+        "resolved_as": "stop_name",
+        "name_zh": row["name_zh"],
+        "name_en": row["name_en"],
+        "latitude": row["latitude"],
+        "longitude": row["longitude"],
+    }
+    return point, (
+        f"「{text}」在地名資料庫只是一個大約的點，附近沒有站；"
+        f"已改用名稱相符的「{row['name_zh']}」。"
+    )

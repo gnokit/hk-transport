@@ -72,7 +72,11 @@ _END = -1
 # routes use NA (NA43) and KMB's overnight cross-border route uses NB
 # (NB73). Residents' routes also start with N (NR330), but they are not
 # overnight, so the letter after N must be A or B or a digit.
-_OVERNIGHT = re.compile(r"^N(?:[AB])?\d")
+_OVERNIGHT = re.compile(r"^(?:N(?:[AB])?\d|\d+N[AB]?$)")
+# Overnight routes carry no GTFS calendar or frequency row, so their service
+# hours are unknown rather than false. Outside these hours they are treated as
+# not running; inside them they are kept and ranked last.
+_OVERNIGHT_WINDOW = (0, 6)
 
 # The routing policy. There is no ride-time data in Hong Kong, so these are
 # judgements, not measurements: the answer never prints them, it only ranks.
@@ -1126,6 +1130,18 @@ def journey(
             if info.get("in_service") is False:
                 closed.add((mode, key))
                 continue
+            if info.get("in_service") is None:
+                # A route with no GTFS calendar or frequency is "unknown", not
+                # "running". Night routes are the case that matters: N11 has no
+                # schedule row at all, so without this it survived a 13:26
+                # query and took second place for 中環 → 銅鑼灣. Outside the
+                # night window an overnight route is treated as not running,
+                # and the note says so.
+                label = graph["labels"].get((mode, key)) or {}
+                if _OVERNIGHT.match(label.get("route") or ""):
+                    if not _OVERNIGHT_WINDOW[0] <= at_time.hour < _OVERNIGHT_WINDOW[1]:
+                        closed.add((mode, key))
+                        continue
             wait = _wait_cost(graph["units"], info.get("headway_minutes"))
             if wait is not None:
                 board_costs[(mode, key)] = wait
@@ -1169,6 +1185,22 @@ def journey(
             points, end_point["latitude"], end_point["longitude"], wide
         )
         widened = f"最近站超過 {walk} 米，已自動放寬到 {wide} 米。"
+    if not origin_edges:
+        fallback, fallback_note = _places.name_fallback(origin, points)
+        if fallback is not None:
+            start_point = fallback
+            origin_edges = _nearby(
+                points, start_point["latitude"], start_point["longitude"], wide
+            )
+            widened += fallback_note or ""
+    if not target_edges:
+        fallback, fallback_note = _places.name_fallback(destination, points)
+        if fallback is not None:
+            end_point = fallback
+            target_edges = _nearby(
+                points, end_point["latitude"], end_point["longitude"], wide
+            )
+            widened += fallback_note or ""
     if not origin_edges:
         return compose(sources, None, note=f"起點 {wide} 米內沒有已接入的站。")
     if not target_edges:

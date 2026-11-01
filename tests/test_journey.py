@@ -658,9 +658,77 @@ def test_a_day_route_ranks_before_a_night_route(wired, monkeypatch):
     ]
     monkeypatch.setattr(j.bus_core, "td_bus_route_stops", lambda: envelope(rows))
     j.clear_cache()
-    result = j.journey("巴士一站", "巴士二站", options=2)
+    result = j.journey("巴士一站", "巴士二站", options=2, at="03:00")
     assert result["data"]["options"][0]["legs"][0]["route"] == "R1"
     assert any(option["overnight_hint"] for option in result["data"]["options"])
+
+
+def test_an_overnight_route_is_closed_in_the_daytime(wired, monkeypatch):
+    """N241 has no GTFS row at all, so "unknown" used to mean "keep it".
+
+    At 13:26 that put N11 second for 中環 → 銅鑼灣. Outside 00:00-06:00 an
+    overnight route is now treated as not running.
+    """
+    rows = [
+        td_row("KMB", "N241", 200, 1, "B1", "巴士一站", 22.0, 114.0),
+        td_row("KMB", "N241", 200, 2, "B2", "巴士二站", 22.01, 114.01),
+    ]
+    monkeypatch.setattr(j.bus_core, "td_bus_route_stops", lambda: envelope(rows))
+    monkeypatch.setattr(
+        j.headway_core,
+        "service_at",
+        lambda at: envelope(
+            {"200": {"headway_minutes": None, "in_service": None, "first": None, "last": None}}
+        ),
+    )
+    j.clear_cache()
+    day = j.journey("巴士一站", "巴士二站", at="13:26")
+    assert day["data"] is None
+    assert "接不上" in day["note"]
+    night = j.journey("巴士一站", "巴士二站", at="03:00")
+    assert night["data"] is not None
+
+
+def test_the_overnight_pattern_covers_the_forms_in_the_data():
+    for name in ("N11", "N241", "NA43", "NB73", "969N", "N8P"):
+        assert j._OVERNIGHT.match(name), name
+    for name in ("960P", "A11", "NR330", "R1", "E22A"):
+        assert not j._OVERNIGHT.match(name), name
+
+
+def test_a_place_with_no_stop_near_it_falls_back_to_a_stop_name(wired, monkeypatch):
+    """香港國際機場 resolves 2.4 km from the terminal, so nothing is in range.
+
+    The fallback takes a stop whose own name sits inside the query and says
+    which one it used.
+    """
+    far = {
+        "query": "巴士一站廣場",
+        "resolved_as": "place",
+        "name_zh": "巴士一站廣場",
+        "name_en": None,
+        "latitude": 22.3140,
+        "longitude": 113.9127,
+    }
+    near = {
+        "query": "巴士二站",
+        "resolved_as": "stop",
+        "name_zh": "巴士二站",
+        "name_en": "巴士二站",
+        "latitude": 22.01,
+        "longitude": 114.01,
+    }
+    monkeypatch.setattr(
+        j._places,
+        "place",
+        lambda text, points: (far if text == "巴士一站廣場" else near, None),
+    )
+    result = j.journey("巴士一站廣場", "巴士二站")
+    assert result["data"] is not None
+    assert "已改用名稱相符的" in result["note"]
+    first = result["data"]["options"][0]["legs"][0]
+    assert first["type"] == "ride"
+    assert first["board"] == "巴士一站"
 
 
 def test_cross_boundary_coaches_are_not_in_the_graph(wired, monkeypatch):
