@@ -14,7 +14,9 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 
 from hk_transport import _graph, mtr_core
+from hk_transport._names import station_name as _station_name
 from hk_transport._result import NO_ALERT, compose
+from hk_transport.mtr_core import LINE_NAMES as LINES, line_names as _line_names
 
 ALERT_CHECK_NEWS = (
     "這一站這一線的回應有特別安排。全港特別交通消息要再查 special_traffic_news。"
@@ -26,8 +28,6 @@ JOURNEY_AMBIGUOUS = "這個名稱對應多於一個車站，沒有選其中一�
 LINE_STATION_AMBIGUOUS = "這個站名在這條線上對應多於一個車站代碼。"
 LIGHT_RAIL_STOP_AMBIGUOUS = "這個名稱對應多於一個輕鐵站，沒有查下一班。"
 ROUTE_AMBIGUOUS = "這個名稱對應多於一條路線。"
-
-from hk_transport.mtr_core import LINE_NAMES as LINES, line_names as _line_names
 
 # One physical interchange, three station ids: AEL Hong Kong (44), TCL Hong
 # Kong (39), and Central (1). The key is deliberately not a station id, so a
@@ -91,7 +91,7 @@ def _match_rows(
     code_key: str | None = "code",
 ) -> list[dict]:
     """Rows matching the query, preferring an exact id over a name."""
-    text = query.strip()
+    text = _station_name(query)
     exact = [
         row
         for row in rows

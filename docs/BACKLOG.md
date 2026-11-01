@@ -115,10 +115,6 @@ MTR Mobile 有非公開 API（`azumtrmba001v.azurewebsites.net/api/signage`）�
 
 **建議：** 保留即可；如果日後唔需要 KMB ETA，可以整個快照刪走。
 
-### B-17 冇 lint／format 工具
-
-一致度靠人手。**建議：** 加 `ruff` 做 dev dependency 同 CI step。
-
 ### B-15 Commit 用咗私人電郵
 
 每個 commit 都係 `gnokit@gmail.com`。轉 public 之後人人可見。**建議：** 轉 public 之前決定用唔用 GitHub noreply，改就趁歷史仲短。
@@ -128,25 +124,15 @@ MTR Mobile 有非公開 API（`azumtrmba001v.azurewebsites.net/api/signage`）�
 | 編號 | 問題 | 建議 |
 |---|---|---|
 | **B-5** | 服務時間、班次密度、低地台：三份數據都冇 | 已用 null 命令明確回答；保持現狀 |
-| **B-7** | `as_hkt` 唔識 `YYYY/MM/DD HH:MM` | 加格式判斷同測試 |
-| **B-8** | 茘枝角 vs 荔枝角（港鐵用「茘」） | 文件已講；可加別名表 |
 | **B-9** | 九巴路線表冇分九巴同龍運 | `bus_route` 仍用 `kmb_routes`；可改用 TD 的 `companyCode` |
 | **B-10** | 循環線重複站未核實 | 抽樣 GMB／巴士循環線，確認站序無重複 |
 | **B-11** | NLB `someDepartureObserveOnly` 未解析 | 等 B-3 有 ETA 再處理 |
-| **B-13** | `/hk-transport` 斜線命令未註冊 | 補命令檔或刪走描述 |
-| **B-14** | 最近車站的組合已無公開入口 | 需要就開新命令，唔好放寬 `mtr_exits` |
-| **B-16** | CI 徽章係靜態 | 轉 public 後換真徽章 |
-| **B-18** | 冇 `SECURITY.md`、`CONTRIBUTING.md`、dependabot | 公開前補 |
-| **B-19** | 文件內的測試數字會漂移 | 只寫約數或刪走 |
 | **B-28** | 活動特別線（269R、SP6） | **巴士部分已解決**：改用 TD 檔案後呢兩條線唔在內。小巴的 `specialType = 1` 係變體標記（黃昏班次等），唔可以當特別線剔走 |
 | **B-30** | 南生圍：Google Maps 的答案同方法 | 已記錄六個方案；第三階段綠巴數據有了可以再對照 |
 | **B-34** | OSM 步行路線可以補路網缺口 | 已比較五段（地政總署快 5–8 倍、距離較短；南生圍只有 OSM 有路線）。要用就要自架或付費，並遵守 ODbL |
 | **B-41** | `journey` 的 `note` 太長、太技術性 | 現在列齊每個模式的 board／speed／dwell；agent 會 quote 給市民。建議 note 只講原則，詳細數字放 `journey.sh help` 或 docs |
-| **B-42** | `_note_from_cost()` 用 `bus` 數值代表「巴士／小巴」 | 如果日後 bus/minibus 的 board 或 speed 分開，prose 會錯；建議分開印 |
 | **B-43** | `_merge_same_route()` 可能遮蓋真正的同線轉乘 | 現時合併「同 mode、同 route、同 operator、board_point == alight_point」的連續車程；同一路線號碼的分支／循環線可能被當成直通。建議抽樣 GMB／巴士分支線，必要時加 `route_seq` 或方向檢查 |
-| **B-44** | `journey.sh help` 叫讀者看 `COST in journey.py` | Agent 未必讀 source；建議 help 直接列出 policy 摘要，或指向 docs |
 | **B-45** | 真實網絡 regression 未覆蓋「落馬洲→太空館」 | 新 test 用 synthetic trunk 證明了 hard-ban 修正，但沒有覆蓋真實的全港鐵＋T270 案例。建議加小型 recorded fixture 或 live-marked test |
-| **B-46** | Fork PR 冇 GitHub checks | PR #1 的 fork 分支 `gh pr checks` 顯示 "no checks reported"，今次靠本地 full suite。建議在 repo settings 要求 checks，或文件講明 maintainer 要本地跑 `uv run pytest` + live |
 
 ---
 
@@ -166,3 +152,14 @@ MTR Mobile 有非公開 API（`azumtrmba001v.azurewebsites.net/api/signage`）�
 | **B-36** | 跨境巴士令市內行程繞經皇崗 | `companyCode` XB（旺角—皇崗、油尖—皇崗）唔入圖；佢哋唯一共用的站係口岸，留低會出現「觀塘 → 荃灣 經皇崗」。有測試防止再加 | 2026-10-30 |
 | **B-47** | `journey` 重複方案封鎖整條線，令全港鐵／T270 消失 | 重複時只封最後一段落車站，唔再封 `(mode, key)` 整條線；連續同線、同接駁站的車程由 `_merge_same_route()` 合併；加 synthetic trunk regression test（舊 code 會 fail） | 2026-11-01 |
 | **B-48** | 皇崗口岸邊境表叫 agent 避開正確的港方口岸站 | 分開 `皇崗口岸`（TD stop `10000421`，新港方口岸，B10/B11/B12/B13/B14/B15/NB73）、`皇崗`（stop `12743`，只有 XB 跨境巴士）同 `落馬洲管制站`（舊道路口岸）；`SKILL.md` 同步 | 2026-11-01 |
+| **B-7** | `as_hkt` 唔識 `YYYY/MM/DD HH:MM` | 支援斜線日期、16 字元（無秒）同日期-only；加 `tests/test_result.py` | 2026-11-01 |
+| **B-8** | 茘枝角 vs 荔枝角 | 新增 `_names.station_name()` 將「荔枝角」正規化為公布的「茘枝角」；`mtr.py` 同 `exits.py` 共用，加 test | 2026-11-01 |
+| **B-13** | `/hk-transport` 斜線命令未註冊 | 從 `SKILL.md` 描述刪走；同時修正「Not tram, ferry」的矛盾 | 2026-11-01 |
+| **B-14** | 最近車站組合冇公開入口 | `SKILL.md` 講明用 `journey` 或單一車站的 `mtr_exits`，唔好放寬 `mtr_exits` | 2026-11-01 |
+| **B-16** | CI 徽章係靜態 | 兩個 README 刪走私人 repo 會 404 的 CI 徽章，保留其餘 badge | 2026-11-01 |
+| **B-17** | 冇 lint／format 工具 | 加 `ruff` dev dependency、`[tool.ruff]` 同 CI `ruff check`；修 15 個 lint error，包括 `bus.py` 未定義的 `_view`（補 helper + test） | 2026-11-01 |
+| **B-18** | 冇 SECURITY／CONTRIBUTING／dependabot | 加 `SECURITY.md`、`CONTRIBUTING.md`、`.github/dependabot.yml` | 2026-11-01 |
+| **B-19** | 文件內的測試數字會漂移 | README／TASKS 的固定測試數字改成不含數字的描述 | 2026-11-01 |
+| **B-42** | `_note_from_cost()` 用 bus 代表巴士／小巴 | 分開印 bus 同 minibus 的 board/speed；加 note test | 2026-11-01 |
+| **B-44** | `journey.sh help` 叫讀者看 `COST in journey.py` | Help 直接由 `COST` 印 board wait；加 test 確保冇 "see COST" | 2026-11-01 |
+| **B-46** | Fork PR 冇 GitHub checks | 加 `.github/pull_request_template.md`；`CONTRIBUTING.md` 講明 maintainer 要本地跑 full suite | 2026-11-01 |

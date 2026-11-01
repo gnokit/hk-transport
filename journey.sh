@@ -20,7 +20,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 import json
 
-from hk_transport.journey import journey
+from hk_transport.journey import COST, journey
 from hk_transport._result import MtrError
 from hk_transport._values import blank
 
@@ -80,7 +80,11 @@ def _commands() -> tuple[Command, ...]:
             (
                 "One search over MTR, every franchised bus, green minibus, tram and ferry.",
                 "Each option lists its walk legs and its ride legs, in order.",
-                "Ranking uses policy minutes: board wait + ride distance/speed + dwell + walking; rail boards cheaper and rides faster than bus/minibus (see COST in journey.py).",
+                "Ranking uses policy minutes: board wait + ride distance/speed + dwell + walking.",
+                f"Board wait: MTR {COST['board_minutes']['mtr']:g}, light rail {COST['board_minutes']['lightrail']:g}, "
+                f"tram {COST['board_minutes']['tram']:g}, bus {COST['board_minutes']['bus']:g}, "
+                f"minibus {COST['board_minutes']['minibus']:g}, ferry {COST['board_minutes']['ferry']:g} minutes.",
+                "Rail boards cheaper and rides faster than bus/minibus.",
                 "Walking metres and minutes come from the Lands Department pedestrian network; when a walk has no route there, it is marked estimated.",
                 "No riding time is published, so a total duration is never given. No fares are included.",
                 "The Peak Tram, taxis and high-speed rail are not in the graph yet.",

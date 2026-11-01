@@ -11,6 +11,7 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from hk_transport._names import station_name as _station_name
 from hk_transport._result import HKT, MtrError, envelope
 
 DATASET_ID = "hk-landsd-openmap-development-location-search-api"
@@ -79,7 +80,7 @@ def mtr_exits(station: str) -> dict:
     這不是港鐵公布的出口名冊。輕鐵站不在這份表。沒有出口編號的出入口，`exit` 留空。
     青衣、九龍、香港在機場快線和東涌線各有一個車站編號，出入口是同一組，`station_ids` 兩個都列。
     """
-    station = (station or "").strip()
+    station = _station_name(station or "")
     if not station:
         raise MtrError(
             "要給一個站名", dataset_id=DATASET_ID, endpoint=SEARCH_ENDPOINT

@@ -4,11 +4,6 @@
 ![uv](https://img.shields.io/badge/managed%20by-uv-261230)
 ![data](https://img.shields.io/badge/data-data.gov.hk-0b7285)
 ![MIT](https://img.shields.io/badge/licence-MIT-green)
-[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088FF?logo=githubactions&logoColor=white)](https://github.com/gnokit/hk-transport/actions/workflows/tests.yml)
-<!-- Private repo: GitHub serves Actions badges anonymously only for public
-     repos, so the live badge 404s. When this goes public, replace the line
-     above with:
-     ![tests](https://github.com/gnokit/hk-transport/actions/workflows/tests.yml/badge.svg?branch=main) -->
 
 **一個香港公共交通的 AI agent skill——港鐵先行。**
 
@@ -201,11 +196,12 @@ graph LR
 ## 開發
 
 ```bash
-uv run pytest                          # 85 個離線測試
-uv run pytest -m live -o addopts=      # 8 個實時檢查，打真端點
+uv run ruff check .                    # lint
+uv run pytest                          # 離線測試
+uv run pytest -m live -o addopts=      # 實時檢查，打真端點
 ```
 
-CI 只跑離線測試。實時測試會呼叫 data.gov.hk，所以是自選的，不會用來卡住建置。
+CI 跑 lint 同離線測試。實時測試會呼叫 data.gov.hk，所以是自選的，不會用來卡住建置。
 
 ## 狀態
 

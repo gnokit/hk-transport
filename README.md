@@ -4,11 +4,6 @@
 ![uv](https://img.shields.io/badge/managed%20by-uv-261230)
 ![data](https://img.shields.io/badge/data-data.gov.hk-0b7285)
 ![MIT](https://img.shields.io/badge/licence-MIT-green)
-[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088FF?logo=githubactions&logoColor=white)](https://github.com/gnokit/hk-transport/actions/workflows/tests.yml)
-<!-- Private repo: GitHub serves Actions badges anonymously only for public
-     repos, so the live badge 404s. When this goes public, replace the line
-     above with:
-     ![tests](https://github.com/gnokit/hk-transport/actions/workflows/tests.yml/badge.svg?branch=main) -->
 
 **An AI agent skill for Hong Kong public transport — MTR first.**
 
@@ -203,11 +198,12 @@ This project's own code is [MIT licensed](LICENSE). That licence covers the code
 ## Development
 
 ```bash
-uv run pytest                          # 85 offline tests
-uv run pytest -m live -o addopts=      # 8 live checks against the real endpoints
+uv run ruff check .                    # lint
+uv run pytest                          # offline tests
+uv run pytest -m live -o addopts=      # live checks against the real endpoints
 ```
 
-The offline suite is what CI runs. Live tests call data.gov.hk, so they are opt-in and never gate a build.
+CI runs `ruff check` and the offline suite. Live tests call data.gov.hk, so they are opt-in and never gate a build.
 
 ## Status
 

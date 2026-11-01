@@ -46,7 +46,6 @@ def clear_cache() -> None:
 
 
 def _route_row(props: dict, geometry: dict | None) -> dict:
-    coords = (geometry or {}).get("coordinates") or [None, None]
     return {
         "district": blank(props.get("district")),
         "route": blank(props.get("routeNameC")),

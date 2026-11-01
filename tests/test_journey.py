@@ -173,6 +173,12 @@ def test_a_direct_ride_is_zero_transfers(wired):
     assert option["stops"] == 1
 
 
+def test_the_note_names_bus_and_minibus_separately(wired):
+    note = j.journey("巴士一站", "巴士二站")["note"]
+    assert f"巴士 {j.COST['board_minutes']['bus']:g}" in note
+    assert f"小巴 {j.COST['board_minutes']['minibus']:g}" in note
+
+
 def test_a_duplicate_does_not_ban_every_alight_on_the_route(wired, monkeypatch):
     """The second option may reuse the trunk route and alight one stop earlier.
 

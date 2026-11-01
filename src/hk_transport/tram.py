@@ -7,8 +7,6 @@ questions answer "no data" rather than estimating.
 
 from __future__ import annotations
 
-import re
-
 from hk_transport import notices, tram_core
 from hk_transport._places import outside as _outside, place as _place, stops_within as _stops_within
 from hk_transport._result import compose

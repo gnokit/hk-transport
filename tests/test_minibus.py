@@ -1,5 +1,3 @@
-import pytest
-
 from hk_transport import minibus
 
 

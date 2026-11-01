@@ -31,7 +31,16 @@ def as_hkt(value: str | None) -> str | None:
         return None
     if text.endswith("Z") or "+" in text:
         return text
-    text = text.replace(" ", "T")
+    if "/" in text:
+        date, _, time = text.partition(" ")
+        if len(date) == 10 and date[4] == "/" and date[7] == "/":
+            text = date.replace("/", "-")
+            if time:
+                text += "T" + time
+    else:
+        text = text.replace(" ", "T")
+    if len(text) == 16:
+        return text + ":00+08:00"
     if len(text) == 19:
         return text + "+08:00"
     return text

@@ -1,4 +1,3 @@
-import json
 import subprocess
 from pathlib import Path
 
@@ -35,6 +34,8 @@ def test_help_page_explains_the_weights_and_scope():
     assert "journey.sh journey" in result.stdout
     assert "policy minutes" in result.stdout
     assert "distance/speed" in result.stdout
+    assert "board wait" in result.stdout
+    assert "see COST" not in result.stdout
     assert "Peak Tram" in result.stdout
 
 

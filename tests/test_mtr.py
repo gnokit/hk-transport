@@ -60,6 +60,13 @@ def _keys(value, found):
             _keys(item, found)
 
 
+def test_lai_chi_kok_alias_uses_the_published_spelling(monkeypatch):
+    rows = [*NETWORK, stop("TWL", "UT", "LCK", "8", "茘枝角", "Lai Chi Kok", 0)]
+    monkeypatch.setattr(mtr.mtr_core, "lines_and_stations", lambda: envelope(rows))
+    result = mtr.mtr_lines(station="荔枝角")
+    assert result["data"]["stations"][0]["station"]["name_zh"] == "茘枝角"
+
+
 def test_branch_directions_stay_separate(monkeypatch):
     monkeypatch.setattr(mtr.mtr_core, "lines_and_stations", lambda: envelope(NETWORK))
     result = mtr.mtr_lines(line="東鐵線")

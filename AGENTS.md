@@ -7,6 +7,7 @@
 每月 CSV 的副本在技能目錄的 `.cache/`，30 日後重新下載。`.gitignore` 已忽略這個目錄。測試用 `HK_TRANSPORT_CACHE` 指到暫存目錄。實時 API 不寫入快取。出入口快照在 `src/hk_transport/data/mtr_exits.json`，不放進 `.cache/`。同一個進程內另有一份記憶快取（`mtr_core._memory`），避免一次回答內重複解析同一份表；`clear_cache()` 清。
 
 ```bash
+uv run ruff check .
 uv run pytest
 uv run pytest -m live -o addopts=
 ```

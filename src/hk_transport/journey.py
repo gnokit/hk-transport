@@ -157,9 +157,9 @@ def _note_from_cost() -> str:
     return (
         "排序用政策權重，唔係時間：轉車／上車罰分"
         f"港鐵 {board['mtr']:g}、輕鐵／電車 {board['lightrail']:g}、"
-        f"巴士／小巴 {board['bus']:g}、渡輪 {board['ferry']:g} 分鐘；"
+        f"巴士 {board['bus']:g}、小巴 {board['minibus']:g}、渡輪 {board['ferry']:g} 分鐘；"
         f"車速港鐵 {speed['mtr']:g}、輕鐵 {speed['lightrail']:g}、"
-        f"電車 {speed['tram']:g}、巴士／小巴 {speed['bus']:g}、"
+        f"電車 {speed['tram']:g}、巴士 {speed['bus']:g}、小巴 {speed['minibus']:g}、"
         f"渡輪 {speed['ferry']:g} km/h；"
         f"每站停站港鐵 {dwell['mtr']:g}、輕鐵 {dwell['lightrail']:g}、"
         f"電車 {dwell['tram']:g}、巴士 {dwell['bus']:g}、"

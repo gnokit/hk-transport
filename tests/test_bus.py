@@ -1,7 +1,4 @@
-import pytest
-
 from hk_transport import _places, bus
-from hk_transport._result import MtrError
 
 
 def stop(stop_id, name, latitude, longitude):
@@ -115,6 +112,15 @@ def test_no_stop_within_the_radius_says_so(monkeypatch):
     assert "400 米內沒有九巴／龍運站" in result["note"]
     assert "最近的是乙站" in result["note"]
     assert "直線 74239 米" in result["note"]
+
+
+def test_stops_near_returns_the_stop_fields(monkeypatch):
+    wire(monkeypatch, ROUTES)
+    result = bus.bus_stops_near("甲站")
+    first = result["data"]["stops"][0]
+    assert first["stop"] == "A1"
+    assert first["name_zh"] == "甲站"
+    assert first["latitude"] == 22.0
 
 
 def test_leg_stop_counts_are_segments(monkeypatch):

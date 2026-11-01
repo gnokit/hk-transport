@@ -9,8 +9,8 @@ description: >
   城巴): which route (搭咩車), stops (巴士站), fare (車費), next bus (下一班),
   or whether a route is disrupted (改道). Also green minibus (小巴, 綠巴,
   專線小巴): which route, stops, fare, next minibus. Also tram (電車) and
-  ferry (渡輪, 船): route, piers, fare. Also /hk-transport.
-  Not tram, ferry, or high-speed rail.
+  ferry (渡輪, 船): route, piers, fare.
+  Not high-speed rail, cross-boundary rail, or taxi.
 compatibility: Requires uv and Python >=3.13. $SKILL_DIR is the directory that contains mtr.sh, bus.sh and minibus.sh.
 ---
 
@@ -46,7 +46,7 @@ A command may answer 「找不到車站：…」, 「找不到路線：…」, �
 - Do not guess a similar place, and do not re-run the same input expecting a different result.
 - Look the name up with `mtr_lines` or `bus_stops_near`, then run the command again.
 - Check the line as well as the station: a correct station on the wrong line fails the same way.
-- Common traps: 茘枝角 is spelled with 茘; English names use the published form (`Tsim Sha Tsui`, `AsiaWorld-Expo`); 中環, 香港 and 機場快線香港站 are names for one interchange area.
+- Common traps: 茘枝角 is spelled with 茘; the command also accepts 荔枝角 as an alias. English names use the published form (`Tsim Sha Tsui`, `AsiaWorld-Expo`); 中環, 香港 and 機場快線香港站 are names for one interchange area.
 - If it still does not resolve, say the skill cannot find it. Do not substitute a nearby place.
 
 Place names are resolved by the Lands Department place search, which knows places and facilities, not just buildings. Two consequences:
@@ -142,6 +142,7 @@ Any point-to-point question goes to `journey.sh journey`. It searches the railwa
 ### Everywhere else
 
 - An accessibility answer says what the file says. A lift is 「閘外區域」(outside the paid area) or 「已付車費區域」(inside it), and the exit it serves. Do not upgrade that to "goes to the street" — the file never states a level. A lift marked 非港鐵管理 is not maintained by MTR but is still there; say so. An exit written 「A 和 D 出口」 covers both exits and cannot be split.
+- The nearest-station combination (`mtr_exits` plus a walking radius) has no public command. For a point-to-point question use `journey`; for one named station use `mtr_exits`. Do not widen `mtr_exits` to answer「最近邊個站」.
 - If no command covers the question, say this skill has no data for it.
 - If the script exits with an error, report that message. Do not guess a train, a bus or a fare.
 - Run a command once per question. Do not poll, and never loop on the traffic feeds.

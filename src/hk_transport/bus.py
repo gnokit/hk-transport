@@ -25,6 +25,18 @@ from hk_transport._result import compose
 _WALK = 400
 _OVERNIGHT = re.compile(r"^N\d")
 
+
+def _view(row: dict) -> dict:
+    """The stop fields a citizen-facing answer may quote."""
+    return {
+        "stop": row["stop"],
+        "name_zh": row["name_zh"],
+        "name_en": row["name_en"],
+        "latitude": row["latitude"],
+        "longitude": row["longitude"],
+    }
+
+
 JOURNEY_NOTE = (
     "只有九巴／龍運，跨營辦商轉車未接上。"
     "成本是轉車次數同停站數，不是時間。步行距離是直線距離。"

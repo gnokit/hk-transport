@@ -79,6 +79,12 @@ def test_one_station_can_be_asked_for_by_name_or_code():
     assert {row["station_zh"] for row in by_code["data"]} == {"金鐘"}
 
 
+def test_lai_chi_kok_alias_is_accepted():
+    result = mtr_exits("荔枝角")
+    assert {row["station_zh"] for row in result["data"]} == {"茘枝角"}
+    assert "茘枝角" in result["note"]
+
+
 def test_unknown_station_does_not_invent_exits():
     result = mtr_exits("不存在")
     assert result["data"] is None
