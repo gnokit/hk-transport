@@ -13,6 +13,37 @@ def stop(name, latitude, longitude):
     }
 
 
+def test_a_coordinate_pair_is_taken_as_a_point():
+    point, note = _places.place("22.31930, 114.16940", {})
+    assert note is None
+    assert point["resolved_as"] == "coordinates"
+    assert round(point["latitude"], 5) == 22.31930
+    assert round(point["longitude"], 5) == 114.16940
+
+
+def test_a_coordinate_pair_outside_the_world_is_rejected_without_a_lookup():
+    point, note = _places.place("122.3193,114.1694", {})
+    assert point is None
+    assert "座標超出範圍" in note
+
+
+def test_a_district_name_is_flagged_as_one_point():
+    point = {"name_zh": "屯門", "latitude": 22.39508, "longitude": 113.97331}
+    note = _places.district_note(point)
+    assert "地區名" in note
+    assert "22.39508" in note
+
+
+def test_a_place_inside_a_district_is_not_flagged():
+    point = {"name_zh": "屯門站", "latitude": 22.39, "longitude": 113.97}
+    assert _places.district_note(point) is None
+
+
+def test_a_coordinate_pair_is_not_flagged_as_a_district():
+    point = {"name_zh": "22.31930,114.16940", "latitude": 22.3193, "longitude": 114.1694}
+    assert _places.district_note(point) is None
+
+
 def test_the_place_with_a_bad_label_point_falls_back_to_the_station():
     """香港國際機場 comes back 2.4 km west of the terminal; 機場 is the real node."""
     points = {

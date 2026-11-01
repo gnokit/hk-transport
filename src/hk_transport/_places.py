@@ -10,8 +10,33 @@ Nothing here picks a route or reads a timetable.
 from __future__ import annotations
 
 import math
+import re
 
 from hk_transport import als, geocode
+
+_COORDINATES = re.compile(r"^\s*(-?\d{1,3}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$")
+# The eighteen districts. A district name is one point in the place search,
+# not the district, so an answer that starts or ends at one says so.
+DISTRICTS = (
+    "中西區",
+    "灣仔",
+    "東區",
+    "南區",
+    "油尖旺",
+    "深水埗",
+    "九龍城",
+    "黃大仙",
+    "觀塘",
+    "葵青",
+    "荃灣",
+    "屯門",
+    "元朗",
+    "北區",
+    "大埔",
+    "沙田",
+    "西貢",
+    "離島",
+)
 
 
 def distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -85,14 +110,34 @@ def name_rank(query: str, row: dict) -> int:
 
 
 def place(query: str, stops: dict[str, dict]) -> tuple[dict | None, str | None]:
-    """Resolve a stop name, a stop id, or a place name to one point.
+    """Resolve a stop name, a stop id, a coordinate pair, or a place name to one point.
 
     A stop name or id wins outright: those are the operator's own names. A
-    place goes to the Lands Department place search, which knows place and
-    facility names that the address lookup does not. The address lookup is
-    the fallback for a street address the place search cannot place.
+    bare "22.3193,114.1694" is taken as a coordinate pair, which lets a caller
+    pin both ends of a comparison to the same point instead of inheriting two
+    different geocoder guesses. A place goes to the Lands Department place
+    search, which knows place and facility names that the address lookup does
+    not. The address lookup is the fallback for a street address the place
+    search cannot place.
     """
     text = query.strip()
+    pair = _COORDINATES.match(text)
+    if pair:
+        latitude = float(pair.group(1))
+        longitude = float(pair.group(2))
+        if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+            return None, f"座標超出範圍：{text}"
+        return (
+            {
+                "query": text,
+                "resolved_as": "coordinates",
+                "name_zh": f"{latitude:.5f},{longitude:.5f}",
+                "name_en": None,
+                "latitude": latitude,
+                "longitude": longitude,
+            },
+            None,
+        )
     exact = [
         row
         for row in stops.values()
@@ -167,6 +212,27 @@ def place(query: str, stops: dict[str, dict]) -> tuple[dict | None, str | None]:
             "score": best.get("score"),
         },
         None,
+    )
+
+
+def district_note(point: dict) -> str | None:
+    """Say when a resolved point is a district name, which is one point only.
+
+    The place search answers 屯門, 沙田 or 西貢 with a single point inside the
+    district. A trip planned from that point is a trip from one spot in the
+    district, not from the district, and the difference can be kilometres.
+    The note names the point so the caller can see what was used.
+    """
+    name = (point.get("name_zh") or "").strip()
+    if not name:
+        return None
+    core = name.removesuffix("區")
+    if core not in {item.removesuffix("區") for item in DISTRICTS}:
+        return None
+    return (
+        f"「{name}」係地區名，只代表區內一個點"
+        f"（{point['latitude']:.5f}, {point['longitude']:.5f}），唔代表全區；"
+        "要準確請用站名、大廈名或座標。"
     )
 
 

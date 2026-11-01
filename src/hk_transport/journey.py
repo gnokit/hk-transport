@@ -1101,6 +1101,14 @@ def journey(
     end_point, note = _places.place(destination, points)
     if end_point is None:
         return compose(sources, None, note=note)
+    district_notes = "".join(
+        text
+        for text in (
+            _places.district_note(start_point),
+            _places.district_note(end_point),
+        )
+        if text
+    )
 
     at_time = _parse_at(at)
     board_costs: dict[tuple, int] = {}
@@ -1279,6 +1287,7 @@ def journey(
             sources,
             None,
             note=NOTE
+            + district_notes
             + "這兩個地方在已接入的網絡上接不上。"
             + headway_note
             + mtr_note,
@@ -1309,5 +1318,5 @@ def journey(
             "at": at_time.isoformat(),
             "options": shown,
         },
-        note=NOTE + widened + extra + headway_note + mtr_note,
+        note=NOTE + widened + extra + district_notes + headway_note + mtr_note,
     )

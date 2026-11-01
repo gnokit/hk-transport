@@ -49,9 +49,11 @@ A command may answer 「找不到車站：…」, 「找不到路線：…」, �
 - Common traps: 茘枝角 is spelled with 茘; the command also accepts 荔枝角 as an alias. English names use the published form (`Tsim Sha Tsui`, `AsiaWorld-Expo`); 中環, 香港 and 機場快線香港站 are names for one interchange area.
 - If it still does not resolve, say the skill cannot find it. Do not substitute a nearby place.
 
-Place names are resolved by the Lands Department place search, which knows places and facilities, not just buildings. Two consequences:
+Place names are resolved by the Lands Department place search, which knows places and facilities, not just buildings. Three consequences:
 
-- A district name (元朗, 尖沙咀) becomes **one point**, not the whole district. Say which point was used, and do not treat it as covering the district.
+- A **coordinate pair** (`22.31930,114.16940`) is accepted anywhere a place name is, and is the only way to pin both ends to an exact point. Use it when the caller already has coordinates, and when comparing two planners, because a place name resolves to a different spot in each one.
+- A **district name** (`屯門`, `沙田`, `西貢`) is one point inside the district, not the district. The answer says so and prints the point. Do not treat it as "the whole district", and do not use it as an origin or destination when the question needs a precise place.
+- A large facility (`香港國際機場`) may resolve to a label point kilometres from its entrances. When nothing is inside the walking radius, the answer falls back to a stop whose own name appears in the query and says which stop it used.
 - When the answer names the nearest stop and a straight-line distance, that means **no bus stop is inside the walking radius**. Report it as it stands: the place has no bus stop that close, and the nearest one is that far away. Never quietly use the further stop.
 
 ## When a name matches more than one station
@@ -66,7 +68,7 @@ A few names are two stations: 香港 has an Airport Express id and a Tung Chung 
 
 This skill covers **Hong Kong–side** public transport only. Do not plan rides on the Mainland network, cross-boundary coaches as a product, co-located Mainland halls, or high-speed rail through 西九龍. If the person asks to cross the boundary or ride 高鐵／跨境鐵路, say 「這個問題超出 hk-transport（港交寶）的範圍。」
 
-Place search and stop names often collide with Mainland port names (福田、羅湖、皇崗、蓮塘、深圳灣). When the origin or destination is clearly one of the ports below (or a close alias), **do not** trust the first `place_search` hit blindly. Prefer the **journey input name** in the table (official stop or station wording). `journey.sh` does not accept coordinates: when place search returns several hits, choose the one nearest the listed WGS84 point, and say which port point you used.
+Place search and stop names often collide with Mainland port names (福田、羅湖、皇崗、蓮塘、深圳灣). When the origin or destination is clearly one of the ports below (or a close alias), **do not** trust the first `place_search` hit blindly. Prefer the **journey input name** in the table (official stop or station wording). Pass the WGS84 pair from the table as the origin or destination (both `journey.sh` and `place` accept `lat,lng`); that settles the ambiguity exactly. If you pass a name instead, choose the hit nearest the listed point and say which port point you used.
 
 Coordinates are from Lands Department place search, MTR exit snapshot, or TD `JSON_BUS` stop geometry (retrieved 2026-10-31 HKT unless noted). Round-trip checks: lat/lon are Hong Kong side unless marked avoid.
 
