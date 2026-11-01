@@ -104,6 +104,18 @@ COST = {
     # A fixed cost per boarding. Charging it on the first boarding too is a
     # constant offset, so it changes the score but not the ranking.
     "transfer_penalty_minutes": 4.0,
+    # Getting from the street or concourse to the vehicle. Google's transit
+    # time includes it and the model used to charge nothing, which made every
+    # option about 3 minutes per rail boarding too quick. This is a time, not
+    # a ranking penalty, so it is reported separately by --explain.
+    "access_minutes": {
+        "mtr": 3.0,
+        "lightrail": 1.0,
+        "tram": 1.0,
+        "bus": 0.5,
+        "minibus": 0.5,
+        "ferry": 2.0,
+    },
     # Cruise speed while riding, by mode. MTR lines override via
     # line_speed_kmh. Bus/minibus use the published whole-route time when it is
     # available; these speeds are only the fallback.
@@ -175,6 +187,10 @@ def _units() -> dict:
         "wait_perception": COST["wait_perception"],
         "wait_cap": COST["wait_cap_minutes"],
         "transfer_penalty": round(COST["transfer_penalty_minutes"] * scale),
+        "access": {
+            mode: round(minutes * scale)
+            for mode, minutes in COST["access_minutes"].items()
+        },
         "dwell": {
             mode: round(minutes * scale)
             for mode, minutes in COST["dwell_minutes"].items()
@@ -776,7 +792,7 @@ def _dijkstra(
                 if board is None:
                     board = units["board"].get(meta[0], units["board"]["bus"])
                 board += units["transfer_penalty"]
-                step = weight + board
+                step = weight + board + units["access"].get(meta[0], 0)
                 if penalty and meta in penalty:
                     step += board
             candidate = cost + step
@@ -994,7 +1010,7 @@ def _cost_parts(path, starts, end_weights, graph, board_costs) -> dict:
     adjacency = graph["adjacency"]
     units = graph["units"]
     start_by_node = {node: cost for cost, node in starts}
-    parts = {"ride": 0, "wait": 0, "transfer": 0, "walk": 0}
+    parts = {"ride": 0, "wait": 0, "transfer": 0, "access": 0, "walk": 0}
     for before, node, kind, meta in path:
         if kind == "start":
             parts["walk"] += start_by_node.get(node, 0)
@@ -1011,6 +1027,7 @@ def _cost_parts(path, starts, end_weights, graph, board_costs) -> dict:
                 board = units["board"].get(meta[0], units["board"]["bus"])
             parts["wait"] += board
             parts["transfer"] += units["transfer_penalty"]
+            parts["access"] += units["access"].get(meta[0], 0)
         elif kind == "ride":
             parts["ride"] += _edge_weight(adjacency, before, node, kind)
         elif kind == "alight":
@@ -1131,6 +1148,7 @@ def _policy_block(option: dict, parts: dict) -> dict:
         "ridden_minutes": round(parts["ride"] / scale, 1),
         "waited_minutes": round(parts["wait"] / scale, 1),
         "transfer_minutes": round(parts["transfer"] / scale, 1),
+        "access_minutes": round(parts["access"] / scale, 1),
         "walked_minutes": round(walked, 1),
         "policy_minutes": round(option["score"] / scale, 1),
         "note": (
