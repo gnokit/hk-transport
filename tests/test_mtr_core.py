@@ -85,6 +85,9 @@ def test_table_is_parsed_once_per_process(monkeypatch):
         return LINES_CSV, "2026-10-01T00:00:00+08:00"
 
     monkeypatch.setattr(mtr_core, "fetch_text", fake_fetch)
+    # The cache only reuses entries that are still fresh; pin that decision so
+    # this test does not turn into a time bomb 30 days after the fixed date.
+    monkeypatch.setattr(mtr_core, "_fresh", lambda retrieved_at: True)
     mtr_core.lines_and_stations()
     mtr_core.lines_and_stations()
     assert calls == [mtr_core.LINES_URL]

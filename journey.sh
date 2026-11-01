@@ -80,7 +80,7 @@ def _commands() -> tuple[Command, ...]:
             (
                 "One search over MTR, every franchised bus, green minibus, tram and ferry.",
                 "Each option lists its walk legs and its ride legs, in order.",
-                "Ranking is transfers, then stops, then walking; one transfer counts as 100 stops and one stop as 100 metres of walking.",
+                "Ranking uses policy minutes: board wait + ride distance/speed + dwell + walking; rail boards cheaper and rides faster than bus/minibus (see COST in journey.py).",
                 "Walking metres and minutes come from the Lands Department pedestrian network; when a walk has no route there, it is marked estimated.",
                 "No riding time is published, so a total duration is never given. No fares are included.",
                 "The Peak Tram, taxis and high-speed rail are not in the graph yet.",
