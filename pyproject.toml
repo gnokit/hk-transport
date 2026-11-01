@@ -1,7 +1,7 @@
 [project]
 name = "hk-transport"
 version = "0.1.0"
-description = "An AI agent skill for Hong Kong public transport questions. MTR first."
+description = "An AI agent skill for Hong Kong public transport questions: MTR, franchised buses, green minibus, tram, ferry, and one journey across them."
 readme = "README.md"
 requires-python = ">=3.13"
 license = "MIT"

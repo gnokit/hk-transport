@@ -1,6 +1,6 @@
 # AGENTS.md
 
-這個倉庫是港交寶（`hk-transport`），一個 AI agent skill。第一階段的港鐵部分已實作。代理指示在 [SKILL.md](SKILL.md)。回答市民時用 `mtr.sh`，`$SKILL_DIR` 是安裝目錄：`bash ${SKILL_DIR}/mtr.sh` 列出命令，`bash ${SKILL_DIR}/mtr.sh help <command>` 看該命令。新的公開函式要在 `mtr.sh` 加子命令。開工前先讀 [docs/TASKS.md](docs/TASKS.md)。那份文件是第一階段的範圍。
+這個倉庫是港交寶（`hk-transport`），一個 AI agent skill。第一至第四階段已實作：港鐵、專營巴士、綠色專線小巴、電車／山頂纜車／渡輪，加跨模式的 `journey`。代理指示在 [SKILL.md](SKILL.md)。回答市民時用對應的入口腳本（`mtr.sh`、`bus.sh`、`minibus.sh`、`tram.sh`、`ferry.sh`、`journey.sh`），`$SKILL_DIR` 是安裝目錄：`bash ${SKILL_DIR}/<mode>.sh` 列出命令，`help <command>` 看該命令。新的公開函式要在所屬模式的入口加子命令；跨模式問題入 `journey.sh`。開工前先讀 [docs/TASKS.md](docs/TASKS.md)。
 
 程式分兩層。`src/hk_transport/mtr_core.py` 一個函式包一份港鐵數據。`src/hk_transport/als.py` 的 `address_lookup` 包地政總署地址查詢，是位置問題的核心，不快取。`src/hk_transport/exits.py` 的 `mtr_exits` 讀重鐵出入口座標，那是約一年有效的快照，查詢時不重新下載。`src/hk_transport/notices.py` 包運輸署特別交通消息和特別交通及運輸安排，全港交通都在內，不快取，也不按港鐵篩選。`src/hk_transport/mtr.py` 用這些函式回答市民的問題，裡面沒有 URL，也沒有快取。新的問題組合現有核心函式。新的數據源才加一個核心函式。第二階段加了 `bus_core.py`（一份巴士資源一個函式）、`bus.py`（十條市民問題十個函式）、`_graph.py`（兩種模式共用的尋路）同 `bus.sh`。第三階段加了 `minibus_core.py`、`minibus.py` 同 `minibus.sh`。跨模式加咗 `journey.py`（全部網絡一張圖）同 `pedroute.py`（地政總署 3D 行人路網）；第四階段加咗 `_td_stops.py`（電車、山頂纜車、渡輪共用解析器）、`tram_core.py`／`ferry_core.py`、`tram.py`／`ferry.py` 同 `tram.sh`／`ferry.sh`；地名解析同步行半徑搬到 `_places.py`，尋路建圖搬到 `_graph.build`，兩邊共用，唔再各寫一份。`geocode.py` 的 `place_search` 包地政總署 GeoInfo Map 的地點搜尋，是地名問題的核心，不快取；`bus.py` 用它把「南生圍」這類地名變成一個點，`als.py` 只在它找不到時做門牌後備。三份共用的東西各有去處：`_result.py` 是信封同 `compose`，`_http.py` 是下載同 30 日快取，`_values.py` 是讀一格。
 

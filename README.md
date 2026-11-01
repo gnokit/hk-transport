@@ -5,9 +5,9 @@
 ![data](https://img.shields.io/badge/data-data.gov.hk-0b7285)
 ![MIT](https://img.shields.io/badge/licence-MIT-green)
 
-**An AI agent skill for Hong Kong public transport — MTR first.**
+**An AI agent skill for Hong Kong public transport.**
 
-A skill an AI agent loads when someone asks how to get around Hong Kong. The agent talks to the person; the skill supplies the facts through 14 commands. Every command returns one JSON envelope with its own source: the dataset, the endpoint actually called, and the time the data describes.
+A skill an AI agent loads when someone asks how to get around Hong Kong. The agent talks to the person; the skill supplies the facts through 47 commands across six entry scripts. Every command returns one JSON envelope with its own source: the dataset, the endpoint actually called, and the time the data describes.
 
 English · [繁體中文](README.zh.md)
 
@@ -15,7 +15,7 @@ English · [繁體中文](README.zh.md)
 
 ## What this is
 
-`hk-transport` is a skill, not an app and not a chatbot. It ships as a small command set (`mtr.sh`) that an AI agent runs to answer one kind of citizen question at a time — which stations a line has, where to change trains, what a fare costs, when the next train arrives.
+`hk-transport` is a skill, not an app and not a chatbot. It ships as small command sets — `mtr.sh`, `bus.sh`, `minibus.sh`, `tram.sh`, `ferry.sh` and the cross-mode `journey.sh` — that an AI agent runs to answer one kind of citizen question at a time: which stations a line has, what a fare costs, when the next train arrives, and which combination of MTR, bus, minibus, tram and ferry gets somewhere.
 
 The split is deliberate:
 
@@ -27,15 +27,15 @@ It is the transport-focused sibling of [`hkdata`](https://github.com/gnokit/hkda
 
 ### Roadmap
 
-Phase 1 ships one entry script, `mtr.sh`. Every later phase adds a sibling script built the same way — `bus.sh`, `minibus.sh`, `tram.sh` — so an agent learns the pattern once and the modes stay independent.
+Each phase adds a sibling script built the same way, so an agent learns the pattern once and the modes stay independent. A cross-mode `journey.sh` sits on top of all of them.
 
 | Phase | Modes | Entry script | Status |
 |---|---|---|---|
 | 1 | MTR heavy rail, Airport Express, Disneyland Resort Line, Light Rail, feeder buses | `mtr.sh` | ✅ 14 commands |
-| 2 | Franchised buses | `bus.sh` | built, under test |
-| 3 | Green minibus, red minibus | `minibus.sh` | built, under test |
-| — | One journey across every built mode | `journey.sh` | built, under test |
-| 4 | Tram, Peak Tram, ferry | `tram.sh`, `ferry.sh` | built, under test |
+| 2 | Franchised buses (KMB, LWB, Citybus, NLB, MTR Bus) | `bus.sh` | ✅ 9 commands |
+| 3 | Green minibus | `minibus.sh` | ✅ 10 commands |
+| 4 | Tram, Peak Tram, ferry | `tram.sh`, `ferry.sh` | ✅ 13 commands |
+| — | One journey across every built mode | `journey.sh` | ✅ 1 command |
 | 5 | Taxi, cross-boundary and high-speed rail | — | **cancelled** — no usable open data |
 
 Every phase ships the same five things:
@@ -54,12 +54,13 @@ Two honest caveats: phases 1–4 are built and phase 5 is cancelled for lack of 
 
 ```bash
 git clone https://github.com/gnokit/hk-transport.git && cd hk-transport
-bash mtr.sh                                          # the manual: one line per command
-bash mtr.sh help mtr_next_train                      # that command's arguments
-bash mtr.sh mtr_next_train 港島線 金鐘                # ask a question
+bash mtr.sh                       # the manual: one line per command
+bash journey.sh help journey      # that command's arguments
+bash journey.sh journey 中環 銅鑼灣 --explain
+bash mtr.sh mtr_next_train 港島線 金鐘
 ```
 
-`mtr.sh` prints one JSON envelope. Trimmed, from a real call:
+Every script prints one JSON envelope. Trimmed, from a real `mtr.sh` call:
 
 ```json
 {
@@ -80,13 +81,13 @@ bash mtr.sh mtr_next_train 港島線 金鐘                # ask a question
 
 ## What you can ask
 
-Each command answers one kind of question. These are phase 1.
+Each command answers one kind of question.
 
 **Any journey, every mode**
 
 | Command | Answers |
 |---|---|
-| `journey` | Which lines to ride and where to transfer, across MTR, every franchised bus operator and green minibus, with real walking legs |
+| `journey` | Which lines to ride and where to transfer, across MTR, every franchised bus operator, green minibus, tram and ferry, with real walking legs |
 
 **Heavy rail**
 
@@ -168,26 +169,26 @@ These are the reason the project exists, not decoration.
 
 ```mermaid
 graph LR
-  A[AI agent] --> B[mtr.sh<br/>skill entry point]
-  B --> C[mtr.py<br/>one function per question]
-  C --> D[mtr_core.py<br/>one function per dataset]
-  C --> E[als.py · exits.py · notices.py]
-  D --> F[(data.gov.hk · MTR)]
-  E --> G[(Lands Department · Transport Department)]
+  A[AI agent] --> B[mtr.sh · bus.sh · minibus.sh<br/>tram.sh · ferry.sh · journey.sh]
+  B --> C[answer layer<br/>mtr.py · bus.py · minibus.py · tram.py · ferry.py · journey.py]
+  C --> D[core layer<br/>one function per dataset]
+  D --> F[(data.gov.hk · MTR website)]
+  C --> E[shared: _places · als · exits · notices<br/>headway_core · mtr_service_core · pedroute]
 ```
 
-Two layers, plus small shared modules (`_result` envelope, `_http` fetch, `_values` cell reading). `mtr.py` holds no URL and no cache; it only composes core functions. A new question reuses existing core functions — only a new data source adds one.
+Two layers, plus small shared modules (`_result` envelope, `_http` fetch, `_values` cell reading). The answer layer holds no URL and no cache; it only composes core functions. A new question reuses existing core functions — only a new data source adds one. `journey.py` is the exception that proves the rule: it composes every mode's stops into one graph instead of answering one mode at a time.
 
 Scope is specified in [docs/TASKS.md](docs/TASKS.md); agent-facing instructions are in [SKILL.md](SKILL.md).
 
 ## Scope
 
-| Covered in phase 1 | Not yet |
+| Covered | Deliberately not covered |
 |---|---|
-| MTR heavy rail, Airport Express, Disneyland Resort Line | Franchised bus, green minibus, red minibus, tram, ferry, taxi |
-| Light Rail and MTR feeder buses | Cross-boundary rail, high-speed rail, intercity services |
-| Address lookup, station exits, barrier-free facilities | Which exit serves a particular building |
-| Territory-wide traffic news and advance arrangements | Crowding levels, first and last trains |
+| MTR heavy rail, Airport Express, Disneyland Resort Line, Light Rail, feeder buses | Red minibus — no fixed route, stop list or fare data |
+| Franchised buses, green minibus, tram, ferry, and one journey across them | Taxi, cross-boundary rail, high-speed rail, intercity services |
+| Fares, stop order, next departures, service hours and first/last trains | Ferry and tram timetables, and tram/ferry real-time arrivals |
+| Address and place lookup, station exits, barrier-free facilities | Which exit serves a particular building |
+| Territory-wide traffic news and advance arrangements | Crowding levels, platform-level delays |
 
 ## Data sources & licence
 
@@ -208,4 +209,4 @@ CI runs `ruff check` and the offline suite. The OD benchmark is opt-in as well: 
 
 ## Status
 
-Phase 1 is complete. The skill answers MTR questions — heavy rail, Airport Express, Disneyland Resort Line, Light Rail, feeder buses, addresses, exits, and the two Transport Department feeds — through 14 commands. Later transport modes are listed in the roadmap above and in [docs/TASKS.md](docs/TASKS.md).
+All five built phases are in: MTR, franchised buses, green minibus, tram, ferry, and a cross-mode `journey` that ranks 47 commands' worth of networks in one search. The remaining gaps are recorded in [docs/BACKLOG.md](docs/BACKLOG.md) — the ones that change an answer today are peak-only bus routes appearing in the afternoon, MTR short-turn trips not being in the graph, and ride-speed estimates for express buses and ferries. Nothing in the planner is measured: `journey` ranks with policy weights and `--explain` labels them as such.

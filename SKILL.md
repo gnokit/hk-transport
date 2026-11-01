@@ -11,20 +11,20 @@ description: >
   專線小巴): which route, stops, fare, next minibus. Also tram (電車) and
   ferry (渡輪, 船): route, piers, fare.
   Not high-speed rail, cross-boundary rail, or taxi.
-compatibility: Requires uv and Python >=3.13. $SKILL_DIR is the directory that contains mtr.sh, bus.sh and minibus.sh.
+compatibility: Requires uv and Python >=3.13. $SKILL_DIR is the directory that contains mtr.sh, bus.sh, minibus.sh, tram.sh, ferry.sh and journey.sh.
 ---
 
 # hk-transport（港交寶）
 
 Answer a Hong Kong transport question by running one of this skill's scripts. Do not write a fetcher. Do not invent a figure a command did not return.
 
-**Scope: one journey search over MTR, franchised buses (KMB, LWB, Citybus, NLB, MTR feeder buses), green minibuses and the Lands Department pedestrian network; plus per-mode route, fare, stop and arrival commands, address lookup, the heavy-rail exit snapshot, and the two Transport Department feeds.** Out of scope today: taxi, cross-boundary rail and high-speed rail.
+**Scope: one journey search over MTR, franchised buses (KMB, LWB, Citybus, NLB, MTR feeder buses), green minibuses, trams and ferries, with walking priced from the Lands Department pedestrian network; plus per-mode route, fare, stop and arrival commands, address lookup, the heavy-rail exit snapshot, and the two Transport Department feeds.** Out of scope today: taxi, cross-boundary rail and high-speed rail.
 
 > If the request is out of scope, say 「這個問題超出 hk-transport（港交寶）的範圍。」 Leave KMB and ferry programs in hkdata. Do not copy them.
 
 ## Choose a command from the manual
 
-Two entry points, one contract each:
+Six entry points, one contract each:
 
 ```bash
 bash ${SKILL_DIR}/journey.sh  # any point-to-point journey, all modes together
